@@ -27,15 +27,34 @@ Build production-ready Go command-line tools following established patterns with
 
 ### For Claude Code
 
-#### Install entire collection:
+#### Recommended: Install as Plugin
 
+1. Register this marketplace in Claude Code:
+   ```
+   /plugin marketplace add lmorchard/lmorchard-agent-skills
+   ```
+
+2. Install via UI:
+   - Select **Browse and install plugins**
+   - Choose **lmorchard-agent-skills**
+   - Click **Install now**
+
+3. Or install directly via command:
+   ```
+   /plugin install lmorchard-agent-skills
+   ```
+
+#### Alternative: Manual Installation
+
+If you prefer to install manually or need to work on the skills locally:
+
+##### Install entire collection:
 ```bash
 # Clone to your skills directory
 git clone https://github.com/lmorchard/lmorchard-agent-skills.git ~/.claude/skills/lmorchard-agent-skills
 ```
 
-#### Install specific skill only:
-
+##### Install specific skill only:
 ```bash
 # Clone with sparse checkout for just one skill
 git clone --depth 1 --filter=blob:none --sparse https://github.com/lmorchard/lmorchard-agent-skills.git ~/.claude/skills/lmorchard-agent-skills
