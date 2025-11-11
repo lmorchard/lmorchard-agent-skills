@@ -37,29 +37,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
-
-      - name: Install cross-compilation dependencies (Linux ARM64)
-        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          go-version: '1.23'
 
       - name: Build
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 1
-          CC: ${{ matrix.goarch == 'arm64' && matrix.goos == 'linux' && 'aarch64-linux-gnu-gcc' || '' }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
           COMMIT="${GITHUB_SHA:0:7}"
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           LDFLAGS="-X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$BUILD_DATE"
-
-          if [ "${{ matrix.goos }}" = "linux" ]; then
-            LDFLAGS="$LDFLAGS -linkmode external -extldflags -static"
-          fi
 
           go build -ldflags "$LDFLAGS" -o {{PROJECT_NAME}}${{ matrix.goos == 'windows' && '.exe' || '' }}
 
