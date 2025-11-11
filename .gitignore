@@ -1,0 +1,35 @@
+# OS files
+.DS_Store
+Thumbs.db
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Build artifacts
+dist/
+build/
+*.zip
+*.tar.gz
+
+# Local testing
+test-output/
+.test/

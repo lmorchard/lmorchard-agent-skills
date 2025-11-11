@@ -1,0 +1,21 @@
+# Configuration file for {{PROJECT_NAME}}
+# Copy this to {{PROJECT_NAME}}.yaml and customize as needed
+
+# Database configuration
+database: "{{PROJECT_NAME}}.db"
+
+# Logging configuration
+verbose: false
+debug: false
+log_json: false
+
+# Example command-specific configuration
+# Uncomment and customize as needed for your commands
+#
+# fetch:
+#   concurrency: 10
+#   timeout: 30s
+#
+# serve:
+#   port: 8080
+#   host: "localhost"

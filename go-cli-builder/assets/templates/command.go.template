@@ -1,0 +1,36 @@
+package cmd
+
+import (
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+// {{COMMAND_NAME}}Cmd represents the {{COMMAND_NAME}} command
+var {{COMMAND_NAME}}Cmd = &cobra.Command{
+	Use:   "{{COMMAND_NAME}}",
+	Short: "A brief description of the {{COMMAND_NAME}} command",
+	Long: `A longer description of the {{COMMAND_NAME}} command that explains
+what it does and how to use it.
+
+Example usage:
+  {{PROJECT_NAME}} {{COMMAND_NAME}} [flags]`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		log := GetLogger()
+		cfg := GetConfig()
+
+		log.Info("Running {{COMMAND_NAME}} command")
+
+		// TODO: Implement command logic here
+
+		return nil
+	},
+}
+
+func init() {
+	rootCmd.AddCommand({{COMMAND_NAME}}Cmd)
+
+	// Add command-specific flags here
+	// Example:
+	// {{COMMAND_NAME}}Cmd.Flags().StringP("option", "o", "", "An option for this command")
+	// viper.BindPFlag("{{COMMAND_NAME}}.option", {{COMMAND_NAME}}Cmd.Flags().Lookup("option"))
+}

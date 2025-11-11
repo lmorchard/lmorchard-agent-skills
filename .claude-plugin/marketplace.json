@@ -1,0 +1,22 @@
+{
+  "name": "lmorchard-agent-skills",
+  "owner": {
+    "name": "Les Orchard",
+    "email": "me@lmorchard.com"
+  },
+  "metadata": {
+    "description": "lmorchard's agent skills",
+    "version": "0.0.1"
+  },
+  "plugins": [
+    {
+      "name": "lmorchard-agent-skills",
+      "description": "Collection of miscellaneous skills built by lmorchard",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./go-cli-builder"
+      ]
+    }
+  ]
+}

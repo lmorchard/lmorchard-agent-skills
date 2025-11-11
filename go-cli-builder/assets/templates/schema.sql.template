@@ -1,0 +1,24 @@
+-- Initial database schema for {{PROJECT_NAME}}
+-- This is version 1 of the schema
+
+-- Migration tracking table
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert initial version
+INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
+
+-- Example table - customize for your application
+-- CREATE TABLE IF NOT EXISTS items (
+--     id INTEGER PRIMARY KEY AUTOINCREMENT,
+--     name TEXT NOT NULL,
+--     description TEXT,
+--     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+--     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- );
+--
+-- CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
+
+-- Add your initial schema tables here
