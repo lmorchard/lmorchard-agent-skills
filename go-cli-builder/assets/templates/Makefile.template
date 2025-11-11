@@ -38,22 +38,22 @@ clean:
 
 # Lint code
 lint:
-	@command -v golangci-lint >/dev/null 2>&1 || { \
+	@test -f $(HOME)/go/bin/golangci-lint || { \
 		echo "❌ golangci-lint not found. Install with: make setup"; \
 		exit 1; \
 	}
 	@echo "Running linters..."
-	@golangci-lint run --timeout 5m
+	@$(HOME)/go/bin/golangci-lint run --timeout 5m
 	@echo "✅ Lint complete"
 
 # Format code
 format:
 	@go fmt ./...
-	@command -v gofumpt >/dev/null 2>&1 || { \
+	@test -f $(HOME)/go/bin/gofumpt || { \
 		echo "❌ gofumpt not found. Install with: make setup"; \
 		exit 1; \
 	}
-	@gofumpt -l -w .
+	@$(HOME)/go/bin/gofumpt -l -w .
 	@echo "✅ Format complete"
 
 # Run tests
