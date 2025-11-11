@@ -244,6 +244,8 @@ All templates are in `assets/templates/`:
 5. **Test with race detection**: `go test -race ./...`
 6. **Version your releases**: Use semantic versioning tags (v1.0.0, v1.1.0, etc.)
 7. **Document in .yaml.example**: Keep example config updated
+8. **Handle errors explicitly**: Use `_ = ` for intentionally ignored errors (e.g., `_ = viper.BindPFlag(...)`)
+9. **Defer cleanup safely**: Use `defer func() { _ = tx.Rollback() }()` instead of `defer tx.Rollback()` to avoid linter warnings
 
 ## Common Customizations
 
@@ -256,6 +258,17 @@ After scaffolding, projects typically need:
 5. **Command implementations**: Fill in the TODOs in command files
 6. **Docker configuration**: Uncomment Docker sections in workflows if needed
 
+## Recent Improvements
+
+### Linter Compliance (2025-11-11)
+
+- **Fixed viper.BindPFlag warnings**: All `viper.BindPFlag()` calls now use `_ = ` prefix to explicitly ignore errors, satisfying the `errcheck` linter
+- **Fixed defer Rollback warnings**: Database transaction cleanup now uses `defer func() { _ = tx.Rollback() }()` pattern
+- **Removed static linking**: Removed `-linkmode external -extldflags "-static"` flags from Makefile to eliminate getaddrinfo warnings when using CGO with SQLite
+- **Updated templates**: All templates now generate linter-clean code out of the box
+
+These changes ensure that projects scaffolded with this skill pass `golangci-lint` without warnings.
+
 ## Troubleshooting
 
 **"gofumpt not found" or "golangci-lint not found"**
@@ -267,6 +280,10 @@ After scaffolding, projects typically need:
 
 **"Missing migration for version N"**
 - Migrations must be sequential; add any missing versions
+
+**"getaddrinfo warning during build"**
+- This warning has been resolved in recent versions by removing static linking flags
+- If you see this in an older project, remove the static linking lines from your Makefile (see Recent Improvements section)
 
 **GitHub Actions failing on cross-compilation**
 - Ensure CGO is enabled for SQLite

@@ -32,5 +32,5 @@ func init() {
 	// Add command-specific flags here
 	// Example:
 	// {{COMMAND_NAME}}Cmd.Flags().StringP("option", "o", "", "An option for this command")
-	// viper.BindPFlag("{{COMMAND_NAME}}.option", {{COMMAND_NAME}}Cmd.Flags().Lookup("option"))
+	// _ = viper.BindPFlag("{{COMMAND_NAME}}.option", {{COMMAND_NAME}}Cmd.Flags().Lookup("option"))
 }

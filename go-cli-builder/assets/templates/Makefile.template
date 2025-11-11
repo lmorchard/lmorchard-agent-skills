@@ -6,10 +6,9 @@ COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(BUILD_DATE)
 
-# Detect OS for static linking
-ifeq ($(shell uname -s),Linux)
-	LDFLAGS += -linkmode external -extldflags "-static"
-endif
+# Note: Static linking is not used because SQLite requires CGO, which links dynamically
+# to system libraries. Attempting static linking causes getaddrinfo warnings and
+# potential runtime compatibility issues.
 
 # Default target
 all: build

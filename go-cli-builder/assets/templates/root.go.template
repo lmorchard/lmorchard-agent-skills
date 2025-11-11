@@ -51,10 +51,10 @@ func init() {
 	rootCmd.PersistentFlags().String("database", "{{PROJECT_NAME}}.db", "database file path")
 
 	// Bind flags to viper
-	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
-	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-	viper.BindPFlag("log_json", rootCmd.PersistentFlags().Lookup("log-json"))
-	viper.BindPFlag("database", rootCmd.PersistentFlags().Lookup("database"))
+	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	_ = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
+	_ = viper.BindPFlag("log_json", rootCmd.PersistentFlags().Lookup("log-json"))
+	_ = viper.BindPFlag("database", rootCmd.PersistentFlags().Lookup("database"))
 }
 
 // initConfig reads in config file and ENV variables if set.
