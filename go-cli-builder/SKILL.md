@@ -39,23 +39,49 @@ Example user requests:
 To scaffold a complete new project:
 
 ```bash
+# With database support (default)
 python scripts/scaffold_project.py my-cli-tool
+
+# Without database support
+python scripts/scaffold_project.py my-cli-tool --no-database
+
+# With template support for generating output
+python scripts/scaffold_project.py my-cli-tool --templates
+
+# Combining options
+python scripts/scaffold_project.py my-cli-tool --no-database --templates
 ```
 
-This creates a directory `my-cli-tool/` with:
-- Complete directory structure (`cmd/`, `internal/config/`, `internal/database/`)
+**Project Options:**
+
+- **Database Support** (default: included)
+  - Includes SQLite with migrations system
+  - Use `--no-database` to exclude if you don't need persistent storage
+  - Examples: CLI tools that only fetch/transform data, API clients
+
+- **Template Support** (default: excluded)
+  - Includes embedded template system with init command
+  - Use `--templates` to include for tools that generate formatted output
+  - Examples: Markdown generators, OPML exporters, report generators
+
+**What gets created:**
+
+Base structure (always):
 - Entry point (`main.go`)
 - Root command with Cobra/Viper integration (`cmd/root.go`)
 - Version command (`cmd/version.go`)
-- Database layer with migrations (`internal/database/`)
+- Configuration system (`internal/config/`)
 - Makefile with standard targets
 - GitHub Actions workflows (CI, release, rolling-release)
-- Example configuration file
+
+Optional additions:
+- Database layer with migrations (`internal/database/`) - if database enabled
+- Template system (`internal/templates/`, `cmd/init.go`) - if templates enabled
 
 **Next steps after scaffolding:**
 1. Update `go.mod` with the actual module name
 2. Customize the example config file
-3. Define initial database schema in `internal/database/schema.sql`
+3. If using database: Define initial schema in `internal/database/schema.sql`
 4. Run `make setup` to install development tools
 5. Run `go mod tidy` to download dependencies
 
