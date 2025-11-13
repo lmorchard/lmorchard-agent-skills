@@ -369,8 +369,8 @@ To extend the skill with additional data sources:
 
 1. Add the new Go CLI binary to `bin/{platform}-{arch}/`
 2. Update `scripts/fetch-sources.sh` to fetch from the new source
-3. Add a new section placeholder to `assets/weeknotes-template.md`
-4. Update `scripts/compose-weeknotes.sh` to include the new content
+3. Update the SKILL.md Step 3 to instruct Claude to read the new source files
+4. Update Step 4 composition guidance to explain how to integrate the new content
 
 ## Platform Detection
 
@@ -386,15 +386,10 @@ Platform detection is handled automatically via `uname` commands. No manual conf
 
 ### scripts/
 
-**Core Scripts:**
 - `setup.sh` - First-time configuration for API credentials
 - `fetch-sources.sh` - Fetch data from all configured sources
 - `prepare-sources.py` - Verify fetched data and prepare for composition
 - `download-binaries.sh` - Update Go CLI binaries to latest releases
-
-**Legacy Scripts** (kept for reference):
-- `compose-weeknotes.py` - Template-based composition (deprecated in favor of Claude composition)
-- `compose-weeknotes.sh` - Shell version of template composition (deprecated)
 
 ### bin/
 
@@ -403,10 +398,6 @@ Pre-compiled Go CLI binaries organized by platform:
 - `linkding-to-markdown` - Fetch Linkding bookmarks as markdown
 
 Binaries are platform-specific and automatically selected at runtime.
-
-### assets/
-
-- `weeknotes-template.md` - Example Jekyll blog post template (legacy reference, not used in composition)
 
 ### config/
 
