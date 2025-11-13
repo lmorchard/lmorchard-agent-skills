@@ -119,8 +119,8 @@ Key style elements observed in past weeknotes:
 
 2. **Structure:**
    - Often starts with a TL;DR summary
-   - "Miscellanea" section for brief observations and bullet points
-   - 2-3 deeper dives into specific projects or topics
+   - 2-3 deeper dives into specific projects or topics (main body)
+   - "Miscellanea" section near the end for brief observations and items that didn't fit elsewhere
    - Concluding reflection on the week
 
 3. **Content Balance:**
@@ -146,7 +146,7 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 **Important:** Do not use template substitution. Instead, read the source markdown and compose it into readable prose.
 
-**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Include a TL;DR summary and consider using a "Miscellanea" section for brief observations.
+**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Include a TL;DR summary. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections.
 
 Analyze the fetched content and compose a conversational weeknotes post that:
 
