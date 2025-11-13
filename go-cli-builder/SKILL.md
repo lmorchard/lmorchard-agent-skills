@@ -91,10 +91,13 @@ my-cli-tool/
 ├── internal/
 │   ├── config/
 │   │   └── config.go                # Configuration struct
-│   └── database/
-│       ├── database.go              # Connection + initialization
-│       ├── migrations.go            # Migration system
-│       └── schema.sql               # Initial schema (embedded)
+│   ├── database/
+│   │   ├── database.go              # Connection + initialization
+│   │   ├── migrations.go            # Migration system
+│   │   └── schema.sql               # Initial schema (embedded)
+│   └── templates/                   # Optional: For tools that generate output
+│       ├── templates.go             # Embedded template loader
+│       └── default.md               # Default template (embedded)
 └── .github/workflows/
     ├── ci.yml                       # PR linting and testing
     ├── release.yml                  # Tagged releases
@@ -139,6 +142,77 @@ The generated database layer includes:
    }
    ```
 3. Migrations run automatically on next database initialization
+
+## Init Command Pattern
+
+For tools that generate output files (markdown, OPML, etc.), the `init` command pattern provides a great user experience by generating both configuration and customizable templates.
+
+### When to Use Init Command
+
+Use the init command when your CLI tool:
+- Generates formatted output (markdown, HTML, XML, etc.)
+- Benefits from user-customizable templates
+- Has configuration that users need to set up before first use
+
+### Init Command Components
+
+**Available templates:**
+- `init.go.template` - Complete init command implementation
+- `templates.go.template` - Template loader with embedded default
+- `default.md.template` - Example embedded markdown template
+
+**The init command:**
+1. Creates a YAML configuration file with all options documented
+2. Creates a customizable template file (using embedded default)
+3. Supports `--force` flag to overwrite existing files
+4. Supports `--template-file` flag to specify custom template filename
+5. Provides helpful next steps after initialization
+
+### Embedded Templates
+
+Go's `//go:embed` directive allows embedding template files directly in the binary:
+
+```go
+package templates
+
+import (
+    _ "embed"
+)
+
+//go:embed default.md
+var defaultTemplate string
+
+func GetDefaultTemplate() (string, error) {
+    return defaultTemplate, nil
+}
+```
+
+**Benefits:**
+- Single binary distribution (no external template files needed)
+- Users can still customize by running `init` to get a copy
+- Template always available as fallback
+
+### Integration with Other Commands
+
+Commands that generate output should support both:
+1. **Built-in template** (default) - uses embedded template
+2. **Custom template** (via `--template` flag or config) - loads from file
+
+Example pattern:
+```go
+templatePath := viper.GetString("command.template")
+var generator *Generator
+if templatePath != "" {
+    generator, err = NewGeneratorFromFile(templatePath)
+} else {
+    generator, err = NewGenerator() // uses embedded default
+}
+```
+
+### Example Projects Using This Pattern
+
+- `linkding-to-markdown` - Fetches bookmarks and generates markdown
+- `mastodon-to-markdown` - Exports Mastodon posts to markdown
 
 ## Makefile Targets
 
@@ -214,23 +288,40 @@ For detailed patterns and guidelines, refer to:
   - Common patterns (Option pattern, error wrapping)
   - When to create new packages
 
+- **`references/template-patterns.md`**: Template-based output generation
+  - When and how to use embedded templates
+  - Init command implementation
+  - Generator/renderer patterns
+  - Template functions and testing
+  - User workflow and best practices
+
 ## Templates Available
 
 All templates are in `assets/templates/`:
 
+**Core Files:**
 - `main.go`: Minimal entry point
 - `go.mod.template`: Pre-configured dependencies
 - `Makefile.template`: Standard build targets
 - `gitignore.template`: Go-specific ignores
 - `config.yaml.example`: Example configuration
+
+**Commands:**
 - `root.go.template`: Cobra/Viper integration
 - `version.go.template`: Version command
 - `constants.go.template`: Application constants
 - `command.go.template`: New command template
+- `init.go.template`: Init command for config/template generation
+
+**Internal Packages:**
 - `config.go.template`: Configuration struct
 - `database.go.template`: Database layer
 - `migrations.go.template`: Migration system
 - `schema.sql.template`: Initial schema
+- `templates.go.template`: Embedded template loader
+- `default.md.template`: Example embedded template
+
+**CI/CD:**
 - `ci.yml.template`: CI workflow
 - `release.yml.template`: Release workflow
 - `rolling-release.yml.template`: Rolling release workflow
