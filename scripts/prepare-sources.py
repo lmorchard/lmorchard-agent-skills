@@ -13,12 +13,10 @@ from pathlib import Path
 
 
 def get_current_week_dates():
-    """Calculate Monday-Sunday dates for the current week."""
+    """Calculate dates for the last 7 days (7 days ago to today)."""
     today = datetime.now()
-    days_since_monday = today.weekday()
-    monday = today - timedelta(days=days_since_monday)
-    sunday = monday + timedelta(days=6)
-    return monday.strftime("%Y-%m-%d"), sunday.strftime("%Y-%m-%d")
+    seven_days_ago = today - timedelta(days=7)
+    return seven_days_ago.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")
 
 
 def main():

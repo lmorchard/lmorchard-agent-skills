@@ -6,23 +6,16 @@ SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="${SKILL_DIR}/config/config.json"
 DATA_DIR="${SKILL_DIR}/data"
 
-# Default to Monday-Sunday of the current week
+# Default to last 7 days (from 7 days ago to today)
 get_week_dates() {
-    # Get the day of week (1=Monday, 7=Sunday)
-    local dow=$(date +%u)
-
-    # Calculate days to subtract to get to Monday
-    local days_to_monday=$((dow - 1))
-
-    # Calculate Monday's date
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS date command
-        START_DATE=$(date -v-${days_to_monday}d +%Y-%m-%d)
-        END_DATE=$(date -v+$((7-dow))d +%Y-%m-%d)
+        START_DATE=$(date -v-7d +%Y-%m-%d)
+        END_DATE=$(date +%Y-%m-%d)
     else
         # Linux date command
-        START_DATE=$(date -d "-${days_to_monday} days" +%Y-%m-%d)
-        END_DATE=$(date -d "+$((7-dow)) days" +%Y-%m-%d)
+        START_DATE=$(date -d "7 days ago" +%Y-%m-%d)
+        END_DATE=$(date +%Y-%m-%d)
     fi
 }
 
@@ -160,16 +153,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🔖 Fetching Linkding bookmarks..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Calculate days between start and end date
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    DAYS_DIFF=$(( ( $(date -j -f "%Y-%m-%d" "${END_DATE}" +%s) - $(date -j -f "%Y-%m-%d" "${START_DATE}" +%s) ) / 86400 + 1 ))
-else
-    DAYS_DIFF=$(( ( $(date -d "${END_DATE}" +%s) - $(date -d "${START_DATE}" +%s) ) / 86400 + 1 ))
-fi
-
 "${BIN_DIR}/linkding-to-markdown" fetch \
     --config "${LINKDING_CONFIG}" \
-    --days "${DAYS_DIFF}" \
+    --since "${START_DATE}" \
+    --until "${END_DATE}" \
     --output "${OUTPUT_DIR}/linkding.md" \
     --verbose
 

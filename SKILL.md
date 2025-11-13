@@ -50,12 +50,24 @@ The primary workflow for composing weeknotes follows these steps:
 
 ### Step 1: Determine Date Range
 
-By default, use Monday-Sunday of the current week. If the user specifies a different timeframe, parse their request and extract start/end dates.
+By default, use the last 7 days (from 7 days ago to today). If the user specifies a different timeframe, parse their request and extract start/end dates.
 
 Examples of user requests:
-- "Draft weeknotes for this week" → Current Monday-Sunday
-- "Create weeknotes for last week" → Previous Monday-Sunday
+- "Draft weeknotes for this week" → 7 days ago to today
+- "Create weeknotes for last week" → 14 days ago to 7 days ago
 - "Generate weeknotes from November 4-10" → 2025-11-04 to 2025-11-10
+
+**Default date calculation:**
+```python
+from datetime import datetime, timedelta
+today = datetime.now()
+end_date = today.strftime("%Y-%m-%d")
+start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+```
+
+So if today is Thursday November 14, 2025:
+- Start date: Thursday November 7, 2025
+- End date: Thursday November 14, 2025
 
 ### Step 2: Fetch Source Data
 
@@ -121,6 +133,7 @@ Key style elements observed in past weeknotes:
    - Often starts with a TL;DR summary
    - 2-3 deeper dives into specific projects or topics (main body)
    - "Miscellanea" section near the end for brief observations and items that didn't fit elsewhere
+     - Use bullet points for each item in Miscellanea
    - Concluding reflection on the week
 
 3. **Content Balance:**
@@ -146,7 +159,7 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 **Important:** Do not use template substitution. Instead, read the source markdown and compose it into readable prose.
 
-**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Include a TL;DR summary. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections.
+**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Include a TL;DR summary. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. Format Miscellanea items as bullet points.
 
 Analyze the fetched content and compose a conversational weeknotes post that:
 
@@ -184,7 +197,7 @@ Analyze the fetched content and compose a conversational weeknotes post that:
 **Critical: Always include the actual URLs!**
 
 When referencing content:
-- **Mastodon posts**: Link to the post URL (e.g., `This week I [posted about solar inverters](https://masto.hackers.town/@user/12345)...`)
+- **Mastodon posts**: Link to the post URL with **short link text (3-5 words)** for aesthetics (e.g., `This week I [posted](https://masto.hackers.town/@user/12345) about solar inverters...`)
 - **Bookmarks**: Include the bookmark URL with descriptive text (e.g., `I found [this article about AI coding](https://example.com/article) particularly interesting...`)
 - **Images**: Embed Mastodon images inline using `![Description](image-url)` when they're interesting or funny
 
@@ -192,7 +205,7 @@ When referencing content:
 
 Instead of listing every post, write something like:
 
-> This week I spent a lot of time [thinking about technology longevity](https://masto.hackers.town/@user/12345). Our 15-year-old solar inverter died, which kicked off a [whole thread about IoT devices](https://masto.hackers.town/@user/12346) and how frustrating it is when tech doesn't have a 15-20 year plan.
+> This week I [spent a lot](https://masto.hackers.town/@user/12345) of time thinking about technology longevity. Our 15-year-old solar inverter died, which [kicked off](https://masto.hackers.town/@user/12346) a whole thread about IoT devices and how frustrating it is when tech doesn't have a 15-20 year plan.
 
 Then for bookmarks, integrate them naturally:
 
@@ -200,7 +213,7 @@ Then for bookmarks, integrate them naturally:
 
 When images add value, include them:
 
-> In more important news, [Miss Biscuits discovered a new perch](https://masto.hackers.town/@user/12347):
+> In more important news, Miss Biscuits [discovered a new perch](https://masto.hackers.town/@user/12347):
 >
 > ![Miss Biscuits in cabinet](https://cdn.example.com/image.jpg)
 
@@ -221,7 +234,51 @@ layout: post
 
 2. **Composed content** - The conversational weeknotes you composed in step 4
 
-3. **Save** to an appropriately named file (e.g., `weeknotes-2025-11-10.md`)
+3. **Save** to the appropriate location and filename:
+
+**Detecting the blog directory:**
+Check if the current working directory contains `content/posts/` - if so, you're in the blog directory.
+
+```bash
+if [ -d "content/posts" ]; then
+  echo "In blog directory - using blog naming convention"
+fi
+```
+
+**If running from the user's blog directory**, use this naming convention:
+```
+content/posts/{YYYY}/{YYYY-MM-DD-wWW}.md
+```
+
+Where:
+- `{YYYY}` = 4-digit year (of the start date)
+- `{YYYY-MM-DD}` = The start date of the weeknotes period
+- `{wWW}` = ISO week number (e.g., w16, w17, w42)
+
+Examples:
+- `content/posts/2025/2025-04-14-w16.md` (Week 16, starting April 14, 2025)
+- `content/posts/2025/2025-11-07-w45.md` (Week 45, starting November 7, 2025)
+
+**To calculate the week number and filename**, use Python:
+```python
+from datetime import datetime, timedelta
+# Calculate the date range (7 days ago to today)
+today = datetime.now()
+start_date = today - timedelta(days=7)
+
+# Calculate ISO week number from start date
+week_number = start_date.isocalendar()[1]
+filename = f"content/posts/{start_date.year}/{start_date.strftime('%Y-%m-%d')}-w{week_number:02d}.md"
+```
+
+**Important:** Ensure the year directory exists before saving:
+```python
+import os
+year_dir = f"content/posts/{start_date.year}"
+os.makedirs(year_dir, exist_ok=True)
+```
+
+**If not in the blog directory**, save to a temporary location (e.g., `/tmp/weeknotes-YYYY-MM-DD.md`) and ask the user where they'd like to move it
 
 ### Step 6: Review and Refine
 
