@@ -135,6 +135,39 @@ fi
 echo ""
 
 # ============================================================================
+# Style Reference Configuration (Optional)
+# ============================================================================
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🎨 Style Reference (Optional)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Enter a URL to your past weeknotes archive for style reference."
+echo "This helps maintain consistent voice and tone in composed posts."
+echo "Example: https://blog.example.com/tag/weeknotes/"
+echo ""
+echo "Leave blank to skip style reference."
+echo ""
+
+read -p "Weeknotes archive URL (optional): " WEEKNOTES_ARCHIVE_URL
+
+# Remove trailing slash if present
+WEEKNOTES_ARCHIVE_URL="${WEEKNOTES_ARCHIVE_URL%/}"
+
+# Validate URL format if provided
+if [ -n "$WEEKNOTES_ARCHIVE_URL" ] && [[ ! "$WEEKNOTES_ARCHIVE_URL" =~ ^https?:// ]]; then
+    echo "⚠️  Warning: URL should start with http:// or https://"
+    echo "   Proceeding anyway..."
+fi
+
+if [ -n "$WEEKNOTES_ARCHIVE_URL" ]; then
+    echo "✅ Style reference URL configured"
+else
+    echo "⏭️  Skipping style reference"
+fi
+
+echo ""
+
+# ============================================================================
 # Save Configuration
 # ============================================================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -148,7 +181,23 @@ mkdir -p "$(dirname "${CONFIG_FILE}")"
 # Create data directory if it doesn't exist
 mkdir -p "${DATA_DIR}"
 
-# Write config file
+# Write config file with conditional weeknotes_archive
+if [ -n "$WEEKNOTES_ARCHIVE_URL" ]; then
+cat > "${CONFIG_FILE}" <<EOF
+{
+  "mastodon": {
+    "server": "${MASTODON_SERVER}",
+    "token": "${MASTODON_TOKEN}"
+  },
+  "linkding": {
+    "url": "${LINKDING_URL}",
+    "token": "${LINKDING_TOKEN}"
+  },
+  "weeknotes_archive": "${WEEKNOTES_ARCHIVE_URL}",
+  "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+EOF
+else
 cat > "${CONFIG_FILE}" <<EOF
 {
   "mastodon": {
@@ -162,6 +211,7 @@ cat > "${CONFIG_FILE}" <<EOF
   "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF
+fi
 
 # Secure the config file
 chmod 600 "${CONFIG_FILE}"

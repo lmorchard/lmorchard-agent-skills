@@ -7,7 +7,7 @@ description: Compose weeknotes blog posts in Jekyll-style Markdown from multiple
 
 ## Overview
 
-This skill enables composing weeknotes blog posts by automatically fetching content from multiple sources (Mastodon posts and Linkding bookmarks) and combining them into a well-formatted Jekyll-style Markdown document with YAML frontmatter. The skill handles data collection, formatting, and composition into a ready-to-publish blog post.
+This skill enables composing weeknotes blog posts by automatically fetching content from multiple sources (Mastodon posts and Linkding bookmarks) and combining them into a well-formatted Jekyll-style Markdown document with YAML frontmatter. The skill handles data collection, formatting, and composition into a ready-to-publish blog post. Optionally, the skill can reference past weeknotes to match the user's personal writing style and voice.
 
 ## Quick Start
 
@@ -27,7 +27,8 @@ If configuration doesn't exist:
 1. Inform the user that first-time setup is needed
 2. Ask for their Mastodon server URL and access token
 3. Ask for their Linkding instance URL and API token
-4. Run `scripts/setup.sh` with their inputs
+4. Optionally ask for their weeknotes archive URL for style reference
+5. Run `scripts/setup.sh` with their inputs
 
 ### Getting API Credentials
 
@@ -115,13 +116,21 @@ cat data/latest/mastodon.md
 cat data/latest/linkding.md
 ```
 
-### Step 3.5: Review Past Weeknotes for Style Reference (Recommended)
+### Step 3.5: Review Past Weeknotes for Style Reference (Optional)
 
-Before composing, review 1-2 of the user's past weeknotes to understand their writing style and voice:
+**Check for configured style reference:**
 
-**User's weeknotes archive:** https://blog.lmorchard.com/tag/weeknotes/
+```bash
+# Check if weeknotes_archive URL is configured
+cd /path/to/weeknotes-blog-post-composer
+cat config/config.json
+```
 
-Key style elements observed in past weeknotes:
+If the config contains a `weeknotes_archive` URL, fetch and review 1-2 of the user's past weeknotes to understand their writing style and voice. Use the WebFetch tool to analyze the archive page and individual posts.
+
+If no `weeknotes_archive` is configured, skip this step and compose in a conversational blog post style.
+
+**Key style elements to look for in past weeknotes:**
 
 1. **Voice & Tone:**
    - Conversational and self-deprecating
@@ -188,7 +197,7 @@ Analyze the fetched content and compose a conversational weeknotes post that:
    - Include section headings that make sense for the content
 
 4. **Uses proper formatting**:
-   - Jekyll-style YAML frontmatter with title, date, tags, and layout
+   - Jekyll-style YAML frontmatter with title, date, tags ("weeknotes" should always be used, along with 3-7 additional tags relevant to the content), and layout
    - Markdown headings (##, ###) for structure
    - Links to interesting posts or bookmarks
    - Inline images from Mastodon posts where relevant
@@ -228,9 +237,20 @@ title: "Weeknotes: [Date Range]"
 date: YYYY-MM-DD
 tags:
   - weeknotes
+  - [contextual-tag-1]
+  - [contextual-tag-2]
+  - [contextual-tag-3]
 layout: post
 ---
 ```
+
+**Important - Tags:** Always include "weeknotes" as the first tag, then add 2-6 additional contextually appropriate tags based on the content (3-7 tags total). Tags should reflect major themes, technologies, topics, or projects discussed in the post. Examples:
+- Technical topics: `ai`, `javascript`, `golang`, `docker`, `apis`
+- Project types: `side-projects`, `open-source`, `blogging`
+- Activities: `learning`, `refactoring`, `debugging`
+- Themes: `productivity`, `tools`, `workflows`
+
+Analyze the composed content and choose tags that genuinely reflect what the post is about.
 
 2. **Composed content** - The conversational weeknotes you composed in step 4
 
@@ -310,14 +330,17 @@ For all supported platforms (darwin-arm64, darwin-amd64, linux-amd64).
 
 ### Reconfiguring
 
-To update API credentials or change data source settings:
+To update API credentials, change data source settings, or add/update style reference URL:
 
 ```bash
 cd /path/to/weeknotes-blog-post-composer
 ./scripts/setup.sh
 ```
 
-The setup script will detect existing configuration and ask for confirmation before reconfiguring.
+The setup script will detect existing configuration and ask for confirmation before reconfiguring. This includes:
+- Mastodon server URL and access token
+- Linkding URL and API token
+- Weeknotes archive URL for style reference (optional)
 
 ### Customizing the Output Style
 
@@ -387,8 +410,11 @@ Binaries are platform-specific and automatically selected at runtime.
 
 ### config/
 
-- `config.json` - User configuration with API credentials (created by setup.sh)
-- This file contains sensitive tokens and is secured with 600 permissions
+- `config.json` - User configuration with API credentials and optional settings (created by setup.sh)
+  - Contains Mastodon server URL and access token
+  - Contains Linkding URL and API token
+  - Optionally contains weeknotes_archive URL for style reference
+  - This file contains sensitive tokens and is secured with 600 permissions
 
 ### data/
 
