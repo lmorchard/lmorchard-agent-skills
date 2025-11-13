@@ -129,13 +129,15 @@ MASTODON_CONFIG="${OUTPUT_DIR}/mastodon-config.yaml"
 LINKDING_CONFIG="${OUTPUT_DIR}/linkding-config.yaml"
 
 cat > "${MASTODON_CONFIG}" <<EOF
-server: ${MASTODON_SERVER}
-token: ${MASTODON_TOKEN}
+mastodon:
+  server: "${MASTODON_SERVER}"
+  access_token: "${MASTODON_TOKEN}"
 EOF
 
 cat > "${LINKDING_CONFIG}" <<EOF
-url: ${LINKDING_URL}
-token: ${LINKDING_TOKEN}
+linkding:
+  url: "${LINKDING_URL}"
+  token: "${LINKDING_TOKEN}"
 EOF
 
 # Fetch from Mastodon
@@ -158,10 +160,16 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🔖 Fetching Linkding bookmarks..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# Calculate days between start and end date
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    DAYS_DIFF=$(( ( $(date -j -f "%Y-%m-%d" "${END_DATE}" +%s) - $(date -j -f "%Y-%m-%d" "${START_DATE}" +%s) ) / 86400 + 1 ))
+else
+    DAYS_DIFF=$(( ( $(date -d "${END_DATE}" +%s) - $(date -d "${START_DATE}" +%s) ) / 86400 + 1 ))
+fi
+
 "${BIN_DIR}/linkding-to-markdown" fetch \
     --config "${LINKDING_CONFIG}" \
-    --since "${START_DATE}" \
-    --until "${END_DATE}" \
+    --days "${DAYS_DIFF}" \
     --output "${OUTPUT_DIR}/linkding.md" \
     --verbose
 

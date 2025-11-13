@@ -82,42 +82,157 @@ Output files are saved to `data/latest/` (or specified directory):
 - `mastodon.md` - Formatted Mastodon posts
 - `linkding.md` - Formatted bookmarks
 
-### Step 3: Compose the Blog Post
+### Step 3: Read and Analyze Source Data
 
-Run the composition script to generate the final weeknotes post:
+Verify the fetched data is ready and understand what content is available:
 
 ```bash
 cd /path/to/weeknotes-blog-post-composer
-
-# Generate from latest fetched data
-./scripts/compose-weeknotes.py --output weeknotes-YYYY-MM-DD.md
-
-# Generate from specific input directory
-./scripts/compose-weeknotes.py --input-dir ./data/custom --output weeknotes.md
-
-# With custom title and explicit dates
-./scripts/compose-weeknotes.py \
-  --start 2025-11-04 \
-  --end 2025-11-10 \
-  --title "Weekly Wrap-Up: November 4-10" \
-  --output weeknotes.md
+./scripts/prepare-sources.py
 ```
 
-Note: A shell script version (`compose-weeknotes.sh`) is also available as an alternative.
+This shows which source files are available and their sizes.
 
-The composed post includes:
-- Jekyll-style YAML frontmatter (title, date, tags, layout)
-- Sections for each data source
-- Placeholder section for manual reflections
-- Proper formatting and structure
+Then read the fetched markdown files to understand the content:
 
-### Step 4: Present to User
+```bash
+# Read Mastodon posts
+cat data/latest/mastodon.md
 
-After composition:
-1. Read the generated file to review content
-2. Present the weeknotes to the user
-3. Offer to make edits or refinements based on their feedback
-4. Ask if they want to add custom reflections or commentary
+# Read Linkding bookmarks
+cat data/latest/linkding.md
+```
+
+### Step 3.5: Review Past Weeknotes for Style Reference (Recommended)
+
+Before composing, review 1-2 of the user's past weeknotes to understand their writing style and voice:
+
+**User's weeknotes archive:** https://blog.lmorchard.com/tag/weeknotes/
+
+Key style elements observed in past weeknotes:
+
+1. **Voice & Tone:**
+   - Conversational and self-deprecating
+   - Frequent parenthetical asides and tangents
+   - Playful language (e.g., "Ope", casual interjections)
+   - Self-aware meta-commentary about the writing process itself
+
+2. **Structure:**
+   - Often starts with a TL;DR summary
+   - "Miscellanea" section for brief observations and bullet points
+   - 2-3 deeper dives into specific projects or topics
+   - Concluding reflection on the week
+
+3. **Content Balance:**
+   - Equal weighting of technical depth and personal reflection
+   - Mixed technical projects, personal observations, and humor
+   - Philosophy embedded in technical writing
+   - Comfortable with digression and associative thinking
+
+4. **Transitions:**
+   - Uses bullet points and whitespace rather than formal prose bridges
+   - Ideas progress through thematic gravity or personal relevance
+   - Stream-of-consciousness feel ("notes accumulated throughout the week")
+
+5. **Distinctive Elements:**
+   - Metaphorical thinking (uses analogies to explain technical challenges)
+   - Acknowledges when feeling scattered or self-doubting
+   - References to ongoing projects and past posts
+   - Comfortable admitting uncertainty or work-in-progress status
+
+When composing, aim to match this voice rather than writing in a generic blog style.
+
+### Step 4: Compose Conversational Weeknotes
+
+**Important:** Do not use template substitution. Instead, read the source markdown and compose it into readable prose.
+
+**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Include a TL;DR summary and consider using a "Miscellanea" section for brief observations.
+
+Analyze the fetched content and compose a conversational weeknotes post that:
+
+1. **Summarizes Mastodon activity** - Don't just list every post. Instead:
+   - Identify themes and topics from the week
+   - Highlight interesting conversations or thoughts
+   - Group related posts together
+   - Write in a natural, conversational tone
+   - Include specific details that are interesting or noteworthy
+   - **Link to actual Mastodon posts** using the URLs from the source (e.g., `[posted about X](https://masto.hackers.town/@user/12345)`)
+   - **Embed images inline** when they add value (e.g., `![Alt text](image-url)`)
+
+2. **Integrates bookmarks meaningfully** - Don't just list links. Instead:
+   - Group bookmarks by theme or topic
+   - Explain why things were interesting or relevant
+   - Connect bookmarks to larger thoughts or projects
+   - Mention patterns in what was saved
+   - **Include actual bookmark URLs** with descriptive link text (e.g., `[Article title](https://example.com)`)
+   - Can be formatted as inline links in prose or as bullet lists with links
+
+3. **Creates a cohesive narrative** - The post should read like a blog post, not a data dump:
+   - Write in first person
+   - Use conversational language
+   - Connect different activities together
+   - Add context and reflection
+   - Include section headings that make sense for the content
+
+4. **Uses proper formatting**:
+   - Jekyll-style YAML frontmatter with title, date, tags, and layout
+   - Markdown headings (##, ###) for structure
+   - Links to interesting posts or bookmarks
+   - Inline images from Mastodon posts where relevant
+   - Code blocks or quotes where appropriate
+
+**Critical: Always include the actual URLs!**
+
+When referencing content:
+- **Mastodon posts**: Link to the post URL (e.g., `This week I [posted about solar inverters](https://masto.hackers.town/@user/12345)...`)
+- **Bookmarks**: Include the bookmark URL with descriptive text (e.g., `I found [this article about AI coding](https://example.com/article) particularly interesting...`)
+- **Images**: Embed Mastodon images inline using `![Description](image-url)` when they're interesting or funny
+
+**Example composition approach:**
+
+Instead of listing every post, write something like:
+
+> This week I spent a lot of time [thinking about technology longevity](https://masto.hackers.town/@user/12345). Our 15-year-old solar inverter died, which kicked off a [whole thread about IoT devices](https://masto.hackers.town/@user/12346) and how frustrating it is when tech doesn't have a 15-20 year plan.
+
+Then for bookmarks, integrate them naturally:
+
+> I saved several interesting articles about AI and coding this week. [*Thinking About Thinking With LLMs*](https://example.com/article) talked about how new tools make it easier to code with shallower understanding. But [another piece](https://example.com/article2) made the point that the best programmers still dig deep to understand what's happening underneath.
+
+When images add value, include them:
+
+> In more important news, [Miss Biscuits discovered a new perch](https://masto.hackers.town/@user/12347):
+>
+> ![Miss Biscuits in cabinet](https://cdn.example.com/image.jpg)
+
+### Step 5: Write the Final Blog Post
+
+Create the Jekyll blog post file with:
+
+1. **YAML frontmatter:**
+```yaml
+---
+title: "Weeknotes: [Date Range]"
+date: YYYY-MM-DD
+tags:
+  - weeknotes
+layout: post
+---
+```
+
+2. **Composed content** - The conversational weeknotes you composed in step 4
+
+3. **Save** to an appropriately named file (e.g., `weeknotes-2025-11-10.md`)
+
+### Step 6: Review and Refine
+
+1. Present the composed weeknotes to the user
+2. Ask if they want any adjustments:
+   - Different tone or style
+   - More/less detail in certain areas
+   - Additional context or reflection
+   - Restructuring of content
+3. Make requested edits
+4. Offer to add a final reflection section if desired
 
 ## Additional Operations
 
@@ -147,23 +262,26 @@ cd /path/to/weeknotes-blog-post-composer
 
 The setup script will detect existing configuration and ask for confirmation before reconfiguring.
 
-### Customizing the Template
+### Customizing the Output Style
 
-The weeknotes template is located at `assets/weeknotes-template.md`. To customize the output format:
+The composition process is flexible and can be customized based on user preferences:
 
-1. Read the current template
-2. Ask the user what changes they'd like
-3. Edit the template to match their preferences
-4. Rerun the composition step
+1. **Tone and Style:**
+   - More formal or casual
+   - Technical vs. personal
+   - Detailed vs. high-level summaries
 
-Template variables:
-- `{{WEEK_RANGE}}` - Date range string (e.g., "2025-11-04 to 2025-11-10")
-- `{{POST_DATE}}` - Publication date (typically end date)
-- `{{START_DATE}}` - Start date (YYYY-MM-DD)
-- `{{END_DATE}}` - End date (YYYY-MM-DD)
-- `{{TITLE}}` - Post title
-- `{{MASTODON_CONTENT}}` - Fetched Mastodon posts (multi-line)
-- `{{LINKDING_CONTENT}}` - Fetched bookmarks (multi-line)
+2. **Structure:**
+   - Different section organization
+   - Thematic groupings vs. chronological
+   - Depth of technical detail
+
+3. **Content Selection:**
+   - Which topics to emphasize
+   - What to skip or summarize briefly
+   - Which links/posts deserve more attention
+
+Ask the user about their preferences for these aspects when composing weeknotes.
 
 ### Adding New Data Sources
 
@@ -191,9 +309,12 @@ Platform detection is handled automatically via `uname` commands. No manual conf
 **Core Scripts:**
 - `setup.sh` - First-time configuration for API credentials
 - `fetch-sources.sh` - Fetch data from all configured sources
-- `compose-weeknotes.py` - Compose the final Jekyll blog post (Python)
-- `compose-weeknotes.sh` - Compose the final Jekyll blog post (Shell alternative)
+- `prepare-sources.py` - Verify fetched data and prepare for composition
 - `download-binaries.sh` - Update Go CLI binaries to latest releases
+
+**Legacy Scripts** (kept for reference):
+- `compose-weeknotes.py` - Template-based composition (deprecated in favor of Claude composition)
+- `compose-weeknotes.sh` - Shell version of template composition (deprecated)
 
 ### bin/
 
@@ -205,7 +326,7 @@ Binaries are platform-specific and automatically selected at runtime.
 
 ### assets/
 
-- `weeknotes-template.md` - Jekyll blog post template with YAML frontmatter
+- `weeknotes-template.md` - Example Jekyll blog post template (legacy reference, not used in composition)
 
 ### config/
 
