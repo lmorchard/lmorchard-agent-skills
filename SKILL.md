@@ -139,7 +139,8 @@ If no `weeknotes_archive` is configured, skip this step and compose in a convers
    - Self-aware meta-commentary about the writing process itself
 
 2. **Structure:**
-   - Often starts with a TL;DR summary
+   - Starts with an opening paragraph containing inline "TL;DR: ..." summary
+   - Followed by `<!--more-->` on its own line (marks intro for Jekyll excerpt)
    - 2-3 deeper dives into specific projects or topics (main body)
    - "Miscellanea" section near the end for brief observations and items that didn't fit elsewhere
      - Use bullet points for each item in Miscellanea
@@ -168,7 +169,7 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 **Important:** Do not use template substitution. Instead, read the source markdown and compose it into readable prose.
 
-**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Include a TL;DR summary. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. Format Miscellanea items as bullet points.
+**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. Format Miscellanea items as bullet points.
 
 Analyze the fetched content and compose a conversational weeknotes post that:
 
@@ -198,10 +199,22 @@ Analyze the fetched content and compose a conversational weeknotes post that:
 
 4. **Uses proper formatting**:
    - Jekyll-style YAML frontmatter with title, date, tags ("weeknotes" should always be used, along with 3-7 additional tags relevant to the content), and layout
-   - Markdown headings (##, ###) for structure
+   - **Opening paragraph** with inline "TL;DR: ..." summary (NOT a header)
+   - **`<!--more-->`** comment on its own line immediately after the opening paragraph (marks excerpt boundary)
+   - Markdown headings (##, ###) for structure in the main body
    - Links to interesting posts or bookmarks
    - Inline images from Mastodon posts where relevant
    - Code blocks or quotes where appropriate
+
+**Example opening structure:**
+```markdown
+TL;DR: Our 15-year-old solar inverter died this week, which kicked off a lot of thinking about technology longevity and IoT device lifecycles. Also spent time tinkering with Claude Code skills and bookmarking way too many articles about AI coding tools.
+
+<!--more-->
+
+## Technology Longevity
+...
+```
 
 **Critical: Always include the actual URLs!**
 
