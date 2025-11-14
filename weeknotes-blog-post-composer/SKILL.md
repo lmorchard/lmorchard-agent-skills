@@ -386,7 +386,50 @@ os.makedirs(year_dir, exist_ok=True)
 
 **If not in the blog directory**, save to a temporary location (e.g., `/tmp/weeknotes-YYYY-MM-DD.md`) and ask the user where they'd like to move it
 
-### Step 7: User Feedback and Final Refinement
+### Step 7: Select Cover Image Thumbnail
+
+Review the images already embedded in the post and select one to use as the cover thumbnail:
+
+1. **Analyze embedded images:**
+   - Review all images included in the post (from Mastodon posts)
+   - Consider their alt text/descriptions
+   - Evaluate which image best represents the overall themes of the weeknotes
+
+2. **Selection criteria:**
+   - **Thematic relevance**: Image should represent main topics/themes, not just incidental content
+   - **Visual interest**: Choose images that are visually distinct and engaging
+   - **Quality**: Avoid low-quality screenshots or purely text-based images
+   - **Context**: Consider the image's role in the narrative - is it central to a main section or just a side note?
+
+3. **Priority order:**
+   - Images related to primary themes/topics in the post
+   - Project photos, interesting technical subjects
+   - Noteworthy screenshots or visual examples
+   - Cat photos (only if cats are a significant theme of the week)
+   - Last resort: use the first image in the post
+
+4. **Add to frontmatter:**
+   - Update the YAML frontmatter to include the `thumbnail:` property
+   - Use the full URL of the selected image
+
+   ```yaml
+   ---
+   title: "Weeknotes: [Date Range]"
+   date: YYYY-MM-DD
+   thumbnail: "https://cdn.masto.host/.../selected-image.jpg"
+   tags:
+     - weeknotes
+     - [other-tags]
+   layout: post
+   ---
+   ```
+
+5. **If no suitable images exist in the post:**
+   - Omit the `thumbnail:` property for now
+   - The blog software will use the first image as a fallback
+   - Note: Future enhancement will add public domain image search
+
+### Step 8: User Feedback and Final Refinement
 
 1. Present the composed weeknotes to the user
 2. Ask if they want any adjustments:
