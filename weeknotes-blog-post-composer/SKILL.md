@@ -142,8 +142,10 @@ If no `weeknotes_archive` is configured, skip this step and compose in a convers
    - Starts with an opening paragraph containing inline "TL;DR: ..." summary
    - Followed by `<!--more-->` on its own line (marks intro for Jekyll excerpt)
    - 2-3 deeper dives into specific projects or topics (main body)
-   - "Miscellanea" section near the end for brief observations and items that didn't fit elsewhere
-     - Use bullet points for each item in Miscellanea
+   - **"Miscellanea" section near the end** (just before conclusion) for brief observations and items that didn't fit elsewhere
+     - **CRITICAL:** Use bullet points for each item in Miscellanea
+     - **CRITICAL:** Include ALL bookmarks/links here as bullet points, not in a separate section
+     - Miscellanea is a catch-all grab bag for everything else: short observations, bookmarks, reading, random thoughts
    - Concluding reflection on the week
 
 3. **Content Balance:**
@@ -169,7 +171,7 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 **Important:** Do not use template substitution. Instead, read the source markdown and compose it into readable prose.
 
-**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. Format Miscellanea items as bullet points.
+**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. **CRITICAL:** Format ALL Miscellanea items as bullet points, including bookmarks and links - do NOT create a separate "Bookmarks and Reading" section.
 
 Analyze the fetched content and compose a conversational weeknotes post that:
 
@@ -185,12 +187,13 @@ Analyze the fetched content and compose a conversational weeknotes post that:
    - Images are especially important for: cats, interesting screenshots, funny visuals, project photos, etc.
 
 2. **Integrates bookmarks meaningfully** - Don't just list links. Instead:
-   - Group bookmarks by theme or topic
-   - Explain why things were interesting or relevant
+   - **CRITICAL: ALL bookmarks MUST go in the Miscellanea section as bullet points**
+   - Do NOT create a separate "Bookmarks and Reading" section
+   - Group related bookmarks together within Miscellanea bullets when possible
+   - Explain why things were interesting or relevant in the bullet text
    - Connect bookmarks to larger thoughts or projects
-   - Mention patterns in what was saved
    - **Include actual bookmark URLs** with descriptive link text (e.g., `[Article title](https://example.com)`)
-   - Can be formatted as inline links in prose or as bullet lists with links
+   - Format as bullet points with links in the Miscellanea section
 
 3. **Creates a cohesive narrative** - The post should read like a blog post, not a data dump:
    - Write in first person
