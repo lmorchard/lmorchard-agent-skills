@@ -180,7 +180,9 @@ Analyze the fetched content and compose a conversational weeknotes post that:
    - Write in a natural, conversational tone
    - Include specific details that are interesting or noteworthy
    - **Link to actual Mastodon posts** using the URLs from the source (e.g., `[posted about X](https://masto.hackers.town/@user/12345)`)
-   - **Embed images inline** when they add value (e.g., `![Alt text](image-url)`)
+   - **IMPORTANT: Embed images inline** when they add value (e.g., `![Alt text](image-url)`)
+   - **Look for posts with Media entries** in the mastodon.md file - these contain images that should be included
+   - Images are especially important for: cats, interesting screenshots, funny visuals, project photos, etc.
 
 2. **Integrates bookmarks meaningfully** - Don't just list links. Instead:
    - Group bookmarks by theme or topic
@@ -233,10 +235,21 @@ Then for bookmarks, integrate them naturally:
 
 > I saved several interesting articles about AI and coding this week. [*Thinking About Thinking With LLMs*](https://example.com/article) talked about how new tools make it easier to code with shallower understanding. But [another piece](https://example.com/article2) made the point that the best programmers still dig deep to understand what's happening underneath.
 
-When images add value, include them:
+**IMPORTANT: Always scan the mastodon.md for images!**
 
-> In more important news, Miss Biscuits [discovered a new perch](https://masto.hackers.town/@user/12347):
+The mastodon.md file includes `Media:` entries with image URLs and descriptions. Look for these and include them in your weeknotes. Example from the source:
+
+```
+Media: [image](https://cdn.masto.host/.../image.jpg) - Description of the image
+```
+
+When you find these, embed them in the weeknotes like this:
+
+> Miss Biscuits [discovered a new perch](https://masto.hackers.town/@user/12347):
 >
+> ![Description of the image](https://cdn.masto.host/.../image.jpg)
+
+Multiple images can be included in sequence for photo series (like cat photo progressions).
 > ![Miss Biscuits in cabinet](https://cdn.example.com/image.jpg)
 
 ### Step 5: Write the Final Blog Post
