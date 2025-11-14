@@ -280,7 +280,34 @@ When you find these, embed them in the weeknotes like this:
 >
 > </image-gallery>
 
-### Step 5: Write the Final Blog Post
+### Step 5: Review and Revise the Draft
+
+Before finalizing, review the composed weeknotes and make light revisions:
+
+1. **Structure check:**
+   - Ensure Miscellanea section is at the end (just before the conclusion)
+   - Move any straggling bookmark bullets that didn't fit into main sections into Miscellanea
+   - Verify all sections flow logically
+
+2. **Prose polish:**
+   - Tighten up verbose sentences
+   - Remove unnecessary repetition
+   - Ensure transitions between sections make sense
+   - Check that the voice remains conversational and natural
+
+3. **Content verification:**
+   - All Mastodon post links are present (3-5 word link text)
+   - All bookmark URLs are included
+   - Images are properly embedded (single images inline, 3+ images in `<image-gallery>`)
+   - Opening has inline "TL;DR: ..." followed by `<!--more-->`
+   - Table of contents nav is present if there are multiple sections
+
+4. **Final touches:**
+   - Verify 3-7 tags (including "weeknotes")
+   - Check that conclusion ties things together
+   - Ensure Miscellanea items are formatted as bullet points
+
+### Step 6: Write the Final Blog Post
 
 Create the Jekyll blog post file with:
 
@@ -306,7 +333,7 @@ layout: post
 
 Analyze the composed content and choose tags that genuinely reflect what the post is about.
 
-2. **Composed content** - The conversational weeknotes you composed in step 4
+2. **Composed content** - The conversational weeknotes you composed in Step 4 and revised in Step 5
 
 3. **Save** to the appropriate location and filename:
 
@@ -356,7 +383,7 @@ os.makedirs(year_dir, exist_ok=True)
 
 **If not in the blog directory**, save to a temporary location (e.g., `/tmp/weeknotes-YYYY-MM-DD.md`) and ask the user where they'd like to move it
 
-### Step 6: Review and Refine
+### Step 7: User Feedback and Final Refinement
 
 1. Present the composed weeknotes to the user
 2. Ask if they want any adjustments:
