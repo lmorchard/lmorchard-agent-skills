@@ -1,0 +1,9 @@
+# Configuration containing API tokens
+config/config.json
+
+# Fetched data
+data/
+
+# Temporary files
+*.tmp
+*.bak
