@@ -203,6 +203,7 @@ Analyze the fetched content and compose a conversational weeknotes post that:
    - Jekyll-style YAML frontmatter with title, date, tags ("weeknotes" should always be used, along with 3-7 additional tags relevant to the content), and layout
    - **Opening paragraph** with inline "TL;DR: ..." summary (NOT a header)
    - **`<!--more-->`** comment on its own line immediately after the opening paragraph (marks excerpt boundary)
+   - **Table of contents nav** on its own line after `<!--more-->` if there are multiple sections (2+ headings): `<nav role="navigation" class="table-of-contents"></nav>`
    - Markdown headings (##, ###) for structure in the main body
    - Links to interesting posts or bookmarks
    - Inline images from Mastodon posts where relevant
@@ -214,6 +215,8 @@ TL;DR: Our 15-year-old solar inverter died this week, which kicked off a lot of 
 
 <!--more-->
 
+<nav role="navigation" class="table-of-contents"></nav>
+
 ## Technology Longevity
 ...
 ```
@@ -224,6 +227,20 @@ When referencing content:
 - **Mastodon posts**: Link to the post URL with **short link text (3-5 words)** for aesthetics (e.g., `This week I [posted](https://masto.hackers.town/@user/12345) about solar inverters...`)
 - **Bookmarks**: Include the bookmark URL with descriptive text (e.g., `I found [this article about AI coding](https://example.com/article) particularly interesting...`)
 - **Images**: Embed Mastodon images inline using `![Description](image-url)` when they're interesting or funny
+  - **For multiple consecutive images** (3+), wrap them in `<image-gallery>` tags with newlines before/after the opening and closing tags:
+    ```markdown
+
+    <image-gallery>
+
+    ![First image](url1)
+
+    ![Second image](url2)
+
+    ![Third image](url3)
+
+    </image-gallery>
+
+    ```
 
 **Example composition approach:**
 
@@ -245,12 +262,23 @@ Media: [image](https://cdn.masto.host/.../image.jpg) - Description of the image
 
 When you find these, embed them in the weeknotes like this:
 
+**Single image:**
 > Miss Biscuits [discovered a new perch](https://masto.hackers.town/@user/12347):
 >
 > ![Description of the image](https://cdn.masto.host/.../image.jpg)
 
-Multiple images can be included in sequence for photo series (like cat photo progressions).
-> ![Miss Biscuits in cabinet](https://cdn.example.com/image.jpg)
+**Multiple images (3+) - use image gallery:**
+> I [shared some photos](https://masto.hackers.town/@user/12348) of my 3D printing projects:
+>
+> <image-gallery>
+>
+> ![3D printed dragon](https://cdn.example.com/image1.jpg)
+>
+> ![Flexible octopus](https://cdn.example.com/image2.jpg)
+>
+> ![Cat playing with prints](https://cdn.example.com/image3.jpg)
+>
+> </image-gallery>
 
 ### Step 5: Write the Final Blog Post
 
