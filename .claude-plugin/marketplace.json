@@ -15,7 +15,8 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./go-cli-builder"
+        "./go-cli-builder",
+        "./weeknotes-blog-post-composer"
       ]
     }
   ]
