@@ -23,6 +23,21 @@ Build production-ready Go command-line tools following established patterns with
 
 [View detailed documentation →](./go-cli-builder/SKILL.md)
 
+### weeknotes-blog-post-composer
+
+Composes conversational weeknotes blog posts from multiple data sources (Mastodon and Linkding).
+
+- **Description**: Automatically fetches content and composes readable, Jekyll-style blog posts with proper voice and narrative structure
+- **Data Sources**: Mastodon posts, Linkding bookmarks
+- **Output**: Jekyll Markdown with YAML frontmatter
+- **Documentation**: [weeknotes-blog-post-composer/README.md](weeknotes-blog-post-composer/README.md)
+
+**Quick usage:**
+```
+User: Draft weeknotes for this week             # Uses last 7 days
+User: Create weeknotes from November 4-10      # Specific date range
+```
+
 ## Installation
 
 ### For Claude Code
@@ -82,6 +97,12 @@ You: "Use the go-cli-builder skill to add an export command to my project"
 
 ## Development
 
+**Philosophy:**
+- Skills should solve real, recurring problems
+- Prefer simple, maintainable solutions
+- Use existing tools and CLIs where possible
+- Document everything for Claude and humans
+
 ### Adding a New Skill
 
 1. Create a new directory for your skill:
@@ -131,6 +152,10 @@ description: Brief description of what the skill does and when to use it
 
 See [Anthropic's skill documentation](https://github.com/anthropics/skills) for more details.
 
+## Security & Privacy
+
+Skills that require API credentials (like weeknotes-blog-post-composer) store them in gitignored config files. All credentials and personal data remain local on your machine. No telemetry or data sharing.
+
 ## Contributing
 
 Contributions are welcome! Please:
@@ -140,6 +165,13 @@ Contributions are welcome! Please:
 3. Test your changes locally
 4. Submit a pull request
 
+## Related Resources
+
+- [Claude Code Documentation](https://docs.claude.com/claude-code)
+- [Building Skills Guide](https://docs.claude.com/claude-code/skills)
+- [Marketplace Plugin System](https://docs.claude.com/claude-code/plugins)
+- [Anthropic's example skills](https://github.com/anthropics/skills)
+
 ## License
 
 MIT License - see [LICENSE.txt](LICENSE.txt) for details.
@@ -147,5 +179,3 @@ MIT License - see [LICENSE.txt](LICENSE.txt) for details.
 ## About
 
 These skills are created and maintained by [Les Orchard](https://github.com/lmorchard).
-
-Built with guidance from [Anthropic's example skills](https://github.com/anthropics/skills).
