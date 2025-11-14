@@ -284,25 +284,27 @@ content/posts/{YYYY}/{YYYY-MM-DD-wWW}.md
 ```
 
 Where:
-- `{YYYY}` = 4-digit year (of the start date)
-- `{YYYY-MM-DD}` = The start date of the weeknotes period
-- `{wWW}` = ISO week number (e.g., w16, w17, w42)
+- `{YYYY}` = 4-digit year (of today's date)
+- `{YYYY-MM-DD}` = Today's date (the publication date)
+- `{wWW}` = ISO week number for today (e.g., w16, w17, w42)
 
 Examples:
-- `content/posts/2025/2025-04-14-w16.md` (Week 16, starting April 14, 2025)
-- `content/posts/2025/2025-11-07-w45.md` (Week 45, starting November 7, 2025)
+- `content/posts/2025/2025-04-18-w16.md` (Week 16, published April 18, 2025)
+- `content/posts/2025/2025-11-13-w46.md` (Week 46, published November 13, 2025)
 
-**To calculate the week number and filename**, use Python:
-```python
-from datetime import datetime, timedelta
-# Calculate the date range (7 days ago to today)
-today = datetime.now()
-start_date = today - timedelta(days=7)
+**To calculate the week number and filename**, use the helper script:
+```bash
+cd /path/to/weeknotes-blog-post-composer
+./scripts/calculate-week.py
 
-# Calculate ISO week number from start date
-week_number = start_date.isocalendar()[1]
-filename = f"content/posts/{start_date.year}/{start_date.strftime('%Y-%m-%d')}-w{week_number:02d}.md"
+# Or for a specific date:
+./scripts/calculate-week.py --date 2025-11-13
+
+# Or get JSON output:
+./scripts/calculate-week.py --json
 ```
+
+This script uses **today's date** (not the start date) and calculates the ISO week number, generating the correct filename format: `content/posts/{year}/{date}-w{week}.md`
 
 **Important:** Ensure the year directory exists before saving:
 ```python
@@ -402,6 +404,7 @@ Platform detection is handled automatically via `uname` commands. No manual conf
 - `setup.sh` - First-time configuration for API credentials
 - `fetch-sources.sh` - Fetch data from all configured sources
 - `prepare-sources.py` - Verify fetched data and prepare for composition
+- `calculate-week.py` - Calculate ISO week number and generate filename for weeknotes
 - `download-binaries.sh` - Update Go CLI binaries to latest releases
 
 ### bin/
