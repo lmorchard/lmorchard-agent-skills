@@ -145,6 +145,7 @@ If no `weeknotes_archive` is configured, skip this step and compose in a convers
    - **"Miscellanea" section near the end** (just before conclusion) for brief observations and items that didn't fit elsewhere
      - **CRITICAL:** Use bullet points for each item in Miscellanea
      - **CRITICAL:** Include ALL bookmarks/links here as bullet points, not in a separate section
+     - **CRITICAL:** Wrap the Miscellanea bullet points in `<div class="weeknote-miscellanea">` tags
      - Miscellanea is a catch-all grab bag for everything else: short observations, bookmarks, reading, random thoughts
    - Concluding reflection on the week
 
@@ -182,6 +183,12 @@ Analyze the fetched content and compose a conversational weeknotes post that:
    - Write in a natural, conversational tone
    - Include specific details that are interesting or noteworthy
    - **Link to actual Mastodon posts** using the URLs from the source (e.g., `[posted about X](https://masto.hackers.town/@user/12345)`)
+   - **CRITICAL - AVOID PLAGIARISM:** Only use the user's own words from "My Posts" sections directly in prose. Content from "Posts I Boosted" or "Posts I Favorited" should ONLY be:
+     - Referenced/cited with attribution (e.g., "Someone on Mastodon pointed out that...")
+     - Summarized in your own words, not quoted verbatim as if the user wrote them
+     - Alternatively, include blocks of text using blockquotes where it seems interesting
+     - Linked to without incorporating their text into the narrative
+     - This is extremely important to avoid unintentional plagiarism
    - **IMPORTANT: Embed images inline** when they add value (e.g., `![Alt text](image-url)`)
    - **Look for posts with Media entries** in the mastodon.md file - these contain images that should be included
    - Images are especially important for: cats, interesting screenshots, funny visuals, project photos, etc.
@@ -251,9 +258,22 @@ Instead of listing every post, write something like:
 
 > This week I [spent a lot](https://masto.hackers.town/@user/12345) of time thinking about technology longevity. Our 15-year-old solar inverter died, which [kicked off](https://masto.hackers.town/@user/12346) a whole thread about IoT devices and how frustrating it is when tech doesn't have a 15-20 year plan.
 
-Then for bookmarks, integrate them naturally:
+**CRITICAL - Only use the user's own posts this way!** If you want to reference a boosted/favorited post or bookmark:
 
-> I saved several interesting articles about AI and coding this week. [*Thinking About Thinking With LLMs*](https://example.com/article) talked about how new tools make it easier to code with shallower understanding. But [another piece](https://example.com/article2) made the point that the best programmers still dig deep to understand what's happening underneath.
+> There's been this interesting [article making the rounds](https://example.com/article) about BBS-era communication patterns - explaining how those carefully drafted essay-like responses created a distinctive writing style. But nope, it's just how we learned to write when bandwidth was scarce.
+
+Then for bookmarks in Miscellanea, reference them naturally wrapped in the `weeknote-miscellanea` div:
+
+```markdown
+## Miscellanea
+
+<div class="weeknote-miscellanea">
+
+* [*Thinking About Thinking With LLMs*](https://example.com/article) - explores how new tools make it easier to code with shallower understanding
+* [Another piece](https://example.com/article2) argues that the best programmers still dig deep to understand what's happening underneath
+
+</div>
+```
 
 **IMPORTANT: Always scan the mastodon.md for images!**
 
@@ -317,7 +337,7 @@ Create the Jekyll blog post file with:
 1. **YAML frontmatter:**
 ```yaml
 ---
-title: "Weeknotes: [Date Range]"
+title: "[Date Range]"
 date: YYYY-MM-DD
 tags:
   - weeknotes
@@ -328,6 +348,8 @@ layout: post
 ---
 ```
 
+**Important - Title Format:** Use the date range format without the word "Weeknotes" (e.g., "2025 Week 48" or "November 22-26, 2025"). The "weeknotes" tag already categorizes the post, so the title should be concise.
+
 **Important - Tags:** Always include "weeknotes" as the first tag, then add 2-6 additional contextually appropriate tags based on the content (3-7 tags total). Tags should reflect major themes, technologies, topics, or projects discussed in the post. Examples:
 - Technical topics: `ai`, `javascript`, `golang`, `docker`, `apis`
 - Project types: `side-projects`, `open-source`, `blogging`
@@ -337,6 +359,8 @@ layout: post
 Analyze the composed content and choose tags that genuinely reflect what the post is about.
 
 2. **Composed content** - The conversational weeknotes you composed in Step 4 and revised in Step 5
+
+**CRITICAL:** Do NOT include "Generated with Claude Code" or similar AI attribution footer in weeknotes posts. These are personal blog posts that should maintain the author's authentic voice throughout.
 
 3. **Save** to the appropriate location and filename:
 

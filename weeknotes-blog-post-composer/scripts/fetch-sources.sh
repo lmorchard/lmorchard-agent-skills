@@ -6,16 +6,17 @@ SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="${SKILL_DIR}/config/config.json"
 DATA_DIR="${SKILL_DIR}/data"
 
-# Default to last 7 days (from 7 days ago to today)
+# Default to last 7 days (from 7 days ago through today)
+# Note: The APIs treat end date as exclusive, so we use tomorrow's date
 get_week_dates() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS date command
         START_DATE=$(date -v-7d +%Y-%m-%d)
-        END_DATE=$(date +%Y-%m-%d)
+        END_DATE=$(date -v+1d +%Y-%m-%d)
     else
         # Linux date command
         START_DATE=$(date -d "7 days ago" +%Y-%m-%d)
-        END_DATE=$(date +%Y-%m-%d)
+        END_DATE=$(date -d "tomorrow" +%Y-%m-%d)
     fi
 }
 
