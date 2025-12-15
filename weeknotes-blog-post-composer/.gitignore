@@ -4,6 +4,9 @@ config/config.json
 # Fetched data
 data/
 
+# Downloaded binary tools
+bin/
+
 # Temporary files
 *.tmp
 *.bak
