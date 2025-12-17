@@ -209,6 +209,43 @@ cat data/latest/mastodon.md
 cat data/latest/linkding.md
 ```
 
+### Step 3.5: Review Past Daily Posts for Style Reference (Optional)
+
+**Check for configured style reference:**
+
+```bash
+# Check if blog archive URL is configured
+cd /path/to/daily-blog-post-composer
+cat config/config.json
+```
+
+If the config contains a blog archive URL, or if you can detect existing daily posts in the blog directory, fetch and review 1-2 recent daily posts to understand the user's writing style and voice.
+
+**Look for daily posts in the blog:**
+```bash
+# Check recent daily posts
+ls -lt content/posts/2025/*.md | head -5
+```
+
+Read a couple recent daily post files to understand:
+
+1. **Voice & Tone:**
+   - Conversational and personal
+   - Level of technical detail
+   - Use of humor or asides
+
+2. **Miscellanea structure:**
+   - How bullets are formatted
+   - Link style and density
+   - Mix of personal vs. technical observations
+
+3. **Focused post style:**
+   - Typical length and depth
+   - How topics are introduced and developed
+   - Transition style between paragraphs
+
+When composing, aim to match this voice rather than using a generic blog style.
+
 ### Step 4: Parse Existing Content as Context
 
 If the target file exists, read and parse it to understand what's already covered:
@@ -271,25 +308,32 @@ Now intelligently decide where new content should go:
    - 2 strongly related bullets → extract if cohesive
    - 2 loosely related bullets → leave in miscellanea
 
-3. **Create new focused post:**
+3. **Maximum focused posts per day: 3-5**
+   - Don't over-extract themes
+   - Be selective about what deserves a focused post
+   - Err on the side of keeping items in miscellanea if themes are weak
+
+4. **Create new focused post:**
    - Choose descriptive title
-   - Assign earlier time (09:00, 12:00, 15:00, 18:00)
+   - **Derive time from content:** Find the earliest Mastodon post timestamp or bookmark creation date related to this theme, use that time
    - Create URL-friendly slug
    - Select relevant tags (2-5 tags)
    - Compose as prose narrative
    - **Remove those bullets from miscellanea**
 
-4. **Be sparing with user input:**
+5. **Be sparing with user input:**
    - Extract obvious themes automatically
    - Don't ask for approval on every decision
    - User can manually reorganize later
 
 **Post timing strategy:**
 - Miscellanea: always `"23:59:00-07:00"`
-- First focused post: `"09:00:00-07:00"`
-- Second focused post: `"12:00:00-07:00"`
-- Third focused post: `"15:00:00-07:00"`
-- Or derive from Mastodon post timestamps for authenticity
+- Focused posts: **Derive from actual timestamps**
+  - Find the earliest Mastodon post or bookmark related to the theme
+  - Use that timestamp (e.g., `"14:23:00-07:00"`)
+  - Round to nearest 15 minutes for cleaner times if desired (e.g., 14:23 → 14:15 or 14:30)
+  - This makes the post timing authentic to when you first discovered/discussed the topic
+- If timestamp unavailable, use standard intervals: 09:00, 12:00, 15:00, 18:00
 
 **Revising existing focused posts:**
 - Be flexible with revisions as new material appears
@@ -376,7 +420,7 @@ Before finalizing (especially at end of day):
 
 ### Voice and Tone
 
-If the user has configured a blog archive URL, review 1-2 past posts to understand their writing style. Otherwise, use a conversational blog post style.
+Review 1-2 recent daily posts from the blog directory (if available) to understand the user's writing style. Look at recent files in `content/posts/2025/*.md` to see how they typically write both miscellanea bullets and focused posts. If no recent daily posts exist, fall back to checking the configured blog archive URL or use a conversational blog post style.
 
 **Key style elements:**
 - Conversational and personal
@@ -414,14 +458,25 @@ The whole setup took about an hour from idea to working dashboard. Pretty satisf
 - Links with descriptive text
 - Short observations (1-3 sentences per bullet)
 - Can include nested bullets for related sub-items
+- Use blockquotes (>) for longer excerpts from articles and posts
+
+**Using blockquotes for excerpts:**
+When sharing a particularly good quote from an article, essay, or post, use blockquotes to distinguish the quoted text from your own commentary:
+- Start with brief context/introduction
+- Use `>` for the actual quoted text (indented appropriately)
+- Optionally add your own commentary after the quote
 
 **Example:**
 ```markdown
 8<--- { "title": "Miscellanea for 2025-12-15", "time": "23:59:00-07:00", "type": "miscellanea", "slug": "miscellanea", "tags": ["miscellanea"] }
 
 - Hello world!
-- [This article about home automation](https://example.com/article) explores the tension between convenience and complexity. Seems relevant after my recent smart home adventures.
+- [This article about home automation](https://example.com/article) explores the tension between convenience and complexity:
+    > The promise of smart homes was simplicity, but we've traded one kind of complexity for another. Instead of manual switches, we now debug YAML files and restart servers.
+    Seems relevant after my recent smart home adventures.
 - Posted [some thoughts on Mastodon](https://masto.hackers.town/@user/12346) about technology longevity. Our 15-year-old solar inverter died this week.
+- Millie's [take on software completion](https://example.com/post):
+    > We need to normalize declaring software as finished. Not everything needs continuous updates to function. Most software works as it is written.
 - Miss Biscuits discovered a new perch: ![Cat on bookshelf](https://cdn.example.com/cat.jpg)
 - Been thinking about writing more regularly. This daily format seems to be working well so far.
 ```

@@ -6,27 +6,46 @@ SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="${SKILL_DIR}/config/config.json"
 DATA_DIR="${SKILL_DIR}/data"
 
-# Default to last 7 days (from 7 days ago through today)
-# Note: The APIs treat end date as exclusive, so we use tomorrow's date
-get_week_dates() {
+# Default to rolling 24-hour window (24 hours ago through now)
+# Note: The APIs treat end date as exclusive, so we use tomorrow for end
+get_rolling_24h() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS date command
-        START_DATE=$(date -v-7d +%Y-%m-%d)
+        START_DATE=$(date -v-1d +%Y-%m-%d)
         END_DATE=$(date -v+1d +%Y-%m-%d)
     else
         # Linux date command
-        START_DATE=$(date -d "7 days ago" +%Y-%m-%d)
+        START_DATE=$(date -d "1 day ago" +%Y-%m-%d)
         END_DATE=$(date -d "tomorrow" +%Y-%m-%d)
+    fi
+}
+
+# Get full day (00:00 to 23:59 for a specific date)
+get_full_day() {
+    local target_date=$1
+    START_DATE="$target_date"
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS date command
+        END_DATE=$(date -j -f "%Y-%m-%d" -v+1d "$target_date" +%Y-%m-%d)
+    else
+        # Linux date command
+        END_DATE=$(date -d "$target_date + 1 day" +%Y-%m-%d)
     fi
 }
 
 # Parse command line arguments
 START_DATE=""
 END_DATE=""
+TARGET_DATE=""
 OUTPUT_DIR="${DATA_DIR}/latest"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --date)
+            TARGET_DATE="$2"
+            shift 2
+            ;;
         --start)
             START_DATE="$2"
             shift 2
@@ -43,14 +62,18 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: fetch-sources.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --start DATE      Start date (YYYY-MM-DD), defaults to Monday of current week"
-            echo "  --end DATE        End date (YYYY-MM-DD), defaults to Sunday of current week"
+            echo "  --date DATE       Fetch full day (YYYY-MM-DD), fetches 00:00 to 23:59 for that date"
+            echo "  --start DATE      Start date (YYYY-MM-DD), for custom range"
+            echo "  --end DATE        End date (YYYY-MM-DD), for custom range"
             echo "  --output-dir DIR  Output directory (default: data/latest)"
             echo "  -h, --help        Show this help message"
             echo ""
+            echo "If no options provided, fetches rolling 24-hour window (yesterday to now)"
+            echo ""
             echo "Examples:"
-            echo "  fetch-sources.sh                                    # Fetch this week"
-            echo "  fetch-sources.sh --start 2025-11-01 --end 2025-11-07"
+            echo "  fetch-sources.sh                           # Rolling 24-hour window"
+            echo "  fetch-sources.sh --date 2025-12-15         # Full day: Dec 15"
+            echo "  fetch-sources.sh --start 2025-12-14 --end 2025-12-15"
             exit 0
             ;;
         *)
@@ -61,13 +84,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# If dates not provided, use current week
-if [ -z "$START_DATE" ] || [ -z "$END_DATE" ]; then
-    get_week_dates
+# Determine date range
+if [ -n "$TARGET_DATE" ]; then
+    # Full day specified
+    get_full_day "$TARGET_DATE"
+elif [ -z "$START_DATE" ] || [ -z "$END_DATE" ]; then
+    # No dates specified, use rolling 24-hour window
+    get_rolling_24h
 fi
+# else: custom start/end dates were provided, use those
 
 echo "╔════════════════════════════════════════╗"
-echo "║   Weeknotes Source Fetcher            ║"
+echo "║   Daily Post Source Fetcher           ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 echo "Fetching data from ${START_DATE} to ${END_DATE}"
