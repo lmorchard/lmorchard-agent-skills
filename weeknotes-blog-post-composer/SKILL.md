@@ -14,11 +14,10 @@ This skill enables composing weeknotes blog posts by automatically fetching cont
 When a user first requests to create weeknotes, check if the skill is configured:
 
 ```bash
-cd /path/to/weeknotes-blog-post-composer
-
 # Check if config exists
-if [ ! -f "./config/config.json" ]; then
+if [ ! -f "$HOME/.claude/config/weeknotes-blog-post-composer/config.json" ]; then
   echo "First-time setup required."
+  # Run setup script from wherever the skill is installed
   ./scripts/setup.sh
 fi
 ```
@@ -75,8 +74,6 @@ So if today is Thursday November 14, 2025:
 Run the fetch script to collect data from all configured sources:
 
 ```bash
-cd /path/to/weeknotes-blog-post-composer
-
 # For current week (automatic date calculation)
 ./scripts/fetch-sources.sh
 
@@ -84,14 +81,14 @@ cd /path/to/weeknotes-blog-post-composer
 ./scripts/fetch-sources.sh --start YYYY-MM-DD --end YYYY-MM-DD
 
 # For custom output directory
-./scripts/fetch-sources.sh --start YYYY-MM-DD --end YYYY-MM-DD --output-dir ./data/custom
+./scripts/fetch-sources.sh --start YYYY-MM-DD --end YYYY-MM-DD --output-dir PATH
 ```
 
 This fetches:
 - Mastodon posts from the specified date range
 - Linkding bookmarks from the specified date range
 
-Output files are saved to `data/latest/` (or specified directory):
+Output files are saved to `~/.claude/cache/weeknotes-blog-post-composer/data/latest/` (or specified directory):
 - `mastodon.md` - Formatted Mastodon posts
 - `linkding.md` - Formatted bookmarks
 
@@ -100,7 +97,6 @@ Output files are saved to `data/latest/` (or specified directory):
 Verify the fetched data is ready and understand what content is available:
 
 ```bash
-cd /path/to/weeknotes-blog-post-composer
 ./scripts/prepare-sources.py
 ```
 
@@ -110,10 +106,10 @@ Then read the fetched markdown files to understand the content:
 
 ```bash
 # Read Mastodon posts
-cat data/latest/mastodon.md
+cat ~/.claude/cache/weeknotes-blog-post-composer/data/latest/mastodon.md
 
 # Read Linkding bookmarks
-cat data/latest/linkding.md
+cat ~/.claude/cache/weeknotes-blog-post-composer/data/latest/linkding.md
 ```
 
 ### Step 3.5: Review Past Weeknotes for Style Reference (Optional)
@@ -122,8 +118,7 @@ cat data/latest/linkding.md
 
 ```bash
 # Check if weeknotes_archive URL is configured
-cd /path/to/weeknotes-blog-post-composer
-cat config/config.json
+cat ~/.claude/config/weeknotes-blog-post-composer/config.json
 ```
 
 If the config contains a `weeknotes_archive` URL, fetch and review 1-2 of the user's past weeknotes to understand their writing style and voice. Use the WebFetch tool to analyze the archive page and individual posts.
@@ -545,27 +540,31 @@ Platform detection is handled automatically via `uname` commands. No manual conf
 - `calculate-week.py` - Calculate ISO week number and generate filename for weeknotes
 - `download-binaries.sh` - Update Go CLI binaries to latest releases
 
-### bin/
+### Runtime Data Directories
 
-Pre-compiled Go CLI binaries organized by platform:
-- `mastodon-to-markdown` - Fetch Mastodon posts as markdown
-- `linkding-to-markdown` - Fetch Linkding bookmarks as markdown
+All runtime data is stored under `~/.claude/` to keep it separate from skill source code:
 
-Binaries are platform-specific and automatically selected at runtime.
-
-### config/
-
+**Config** (`~/.claude/config/weeknotes-blog-post-composer/`):
 - `config.json` - User configuration with API credentials and optional settings (created by setup.sh)
   - Contains Mastodon server URL and access token
   - Contains Linkding URL and API token
   - Optionally contains weeknotes_archive URL for style reference
   - This file contains sensitive tokens and is secured with 600 permissions
 
-### data/
+**Binaries** (`~/.claude/share/weeknotes-blog-post-composer/bin/`):
+- Pre-compiled Go CLI binaries organized by platform:
+  - `darwin-arm64/` - macOS ARM64
+  - `darwin-amd64/` - macOS Intel
+  - `linux-amd64/` - Linux AMD64
+- `mastodon-to-markdown` - Fetch Mastodon posts as markdown
+- `linkding-to-markdown` - Fetch Linkding bookmarks as markdown
+- Binaries are platform-specific and automatically selected at runtime
 
+**Cache** (`~/.claude/cache/weeknotes-blog-post-composer/data/`):
 - `latest/` - Most recently fetched source data
 - Other directories for historical or custom fetches
 - Contains `mastodon.md` and `linkding.md` after fetching
+- This is temporary/ephemeral data that can be safely deleted
 
 ## Troubleshooting
 

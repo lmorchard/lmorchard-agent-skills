@@ -2,9 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="${SKILL_DIR}/config/config.json"
-DATA_DIR="${SKILL_DIR}/data"
+source "${SCRIPT_DIR}/common.sh"
 
 echo "╔════════════════════════════════════════╗"
 echo "║   Weeknotes Composer Setup            ║"
@@ -174,12 +172,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "💾 Saving Configuration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-
-# Create config directory if it doesn't exist
-mkdir -p "$(dirname "${CONFIG_FILE}")"
-
-# Create data directory if it doesn't exist
-mkdir -p "${DATA_DIR}"
 
 # Write config file with conditional weeknotes_archive
 if [ -n "$WEEKNOTES_ARCHIVE_URL" ]; then

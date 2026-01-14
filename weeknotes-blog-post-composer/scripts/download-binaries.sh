@@ -2,18 +2,17 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-BIN_DIR="${SKILL_DIR}/bin"
+source "${SCRIPT_DIR}/common.sh"
 
 echo "╔════════════════════════════════════════╗"
 echo "║   Weeknotes Binary Downloader         ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
-# Create bin directory structure
-mkdir -p "${BIN_DIR}/darwin-arm64"
-mkdir -p "${BIN_DIR}/darwin-amd64"
-mkdir -p "${BIN_DIR}/linux-amd64"
+# Create platform-specific bin directories
+mkdir -p "${BIN_BASE}/darwin-arm64"
+mkdir -p "${BIN_BASE}/darwin-amd64"
+mkdir -p "${BIN_BASE}/linux-amd64"
 
 # Function to download and extract a GitHub release
 download_tool() {
@@ -28,7 +27,7 @@ download_tool() {
     local archive_name="${tool_name}-${platform}-${arch}.tar.gz"
     local asset_url="https://github.com/${repo}/releases/download/latest/${archive_name}"
     local temp_archive="/tmp/${archive_name}"
-    local target_dir="${BIN_DIR}/${platform}-${arch}"
+    local target_dir="${BIN_BASE}/${platform}-${arch}"
     local target_binary="${target_dir}/${tool_name}"
 
     # Download the archive
@@ -86,4 +85,4 @@ echo "║   Download Complete!                   ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 echo "Binary locations:"
-tree "${BIN_DIR}" || ls -R "${BIN_DIR}"
+tree "${BIN_BASE}" || ls -R "${BIN_BASE}"

@@ -2,9 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="${SKILL_DIR}/config/config.json"
-DATA_DIR="${SKILL_DIR}/data"
+source "${SCRIPT_DIR}/common.sh"
 
 # Default to last 7 days (from 7 days ago through today)
 # Note: The APIs treat end date as exclusive, so we use tomorrow's date
@@ -23,7 +21,7 @@ get_week_dates() {
 # Parse command line arguments
 START_DATE=""
 END_DATE=""
-OUTPUT_DIR="${DATA_DIR}/latest"
+OUTPUT_DIR="${DATA_BASE}/latest"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -81,20 +79,9 @@ if [ ! -f "${CONFIG_FILE}" ]; then
     echo ""
 fi
 
-# Detect platform
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-
-case $ARCH in
-    x86_64) ARCH="amd64" ;;
-    aarch64|arm64) ARCH="arm64" ;;
-esac
-
-BIN_DIR="${SKILL_DIR}/bin/${OS}-${ARCH}"
-
 # Check if binaries exist
 if [ ! -f "${BIN_DIR}/mastodon-to-markdown" ] || [ ! -f "${BIN_DIR}/linkding-to-markdown" ]; then
-    echo "❌ Binaries not found for platform: ${OS}-${ARCH}"
+    echo "❌ Binaries not found for platform: ${PLATFORM}"
     echo "   Please run scripts/download-binaries.sh first"
     exit 1
 fi

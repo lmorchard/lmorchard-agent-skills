@@ -27,7 +27,7 @@ def main():
     parser.add_argument(
         "--input-dir",
         type=Path,
-        help="Input directory with fetched data (default: data/latest)",
+        help="Input directory with fetched data (default: ~/.claude/cache/weeknotes-blog-post-composer/data/latest)",
     )
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", help="End date (YYYY-MM-DD)")
@@ -36,7 +36,8 @@ def main():
 
     # Set default input directory
     if not args.input_dir:
-        args.input_dir = Path(__file__).parent.parent / "data" / "latest"
+        home = Path.home()
+        args.input_dir = home / ".claude" / "cache" / "weeknotes-blog-post-composer" / "data" / "latest"
 
     print("╔════════════════════════════════════════╗")
     print("║   Weeknotes Source Preparation        ║")

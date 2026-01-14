@@ -69,7 +69,7 @@ Claude will:
 
 ## Configuration
 
-After initial setup, your config lives in `config/config.json`:
+After initial setup, your config lives in `~/.claude/config/weeknotes-blog-post-composer/config.json`:
 
 ```json
 {
@@ -91,25 +91,40 @@ To reconfigure:
 ./scripts/setup.sh
 ```
 
-## Project Structure
+## Directory Structure
+
+Runtime data is stored under `~/.claude/` to keep it separate from skill source code:
+
+```
+~/.claude/
+├── config/weeknotes-blog-post-composer/
+│   └── config.json                    # API credentials (600 permissions)
+├── share/weeknotes-blog-post-composer/
+│   └── bin/                           # Downloaded binaries
+│       ├── darwin-arm64/
+│       ├── darwin-amd64/
+│       └── linux-amd64/
+└── cache/weeknotes-blog-post-composer/
+    └── data/                          # Fetched markdown files
+        └── latest/
+```
+
+## Skill Source Structure
 
 ```
 weeknotes-blog-post-composer/
 ├── SKILL.md              # Detailed documentation for Claude
 ├── README.md             # This file
-├── bin/                  # Platform-specific Go CLI binaries
-│   ├── darwin-arm64/
-│   ├── darwin-amd64/
-│   └── linux-amd64/
-├── scripts/
-│   ├── setup.sh          # First-time configuration
-│   ├── fetch-sources.sh  # Fetch data from sources
-│   ├── prepare-sources.py # Verify fetched data
-│   └── download-binaries.sh # Update CLI binaries
-├── config/
-│   └── config.json       # API credentials (gitignored)
-└── data/                 # Fetched markdown files (gitignored)
+└── scripts/
+    ├── common.sh         # Shared configuration for all scripts
+    ├── setup.sh          # First-time configuration
+    ├── fetch-sources.sh  # Fetch data from sources
+    ├── prepare-sources.py # Verify fetched data
+    ├── calculate-week.py # Calculate ISO week numbers
+    └── download-binaries.sh # Download CLI binaries
 ```
+
+Runtime data (config, binaries, cache) lives in `~/.claude/` as shown above.
 
 ## Data Sources
 
@@ -162,10 +177,10 @@ You can run individual components if needed:
 
 ## Security
 
-- API credentials stored in `config/config.json` with 600 permissions
-- Config file is gitignored
+- API credentials stored in `~/.claude/config/weeknotes-blog-post-composer/config.json` with 600 permissions
+- Runtime data is stored outside the skill source directory
 - Temporary config files cleaned up after use
-- Fetched data is gitignored
+- All sensitive data stays in `~/.claude/` and is never committed to git
 
 ## Documentation
 
