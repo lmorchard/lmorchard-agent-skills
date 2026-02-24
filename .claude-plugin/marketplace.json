@@ -17,7 +17,8 @@
       "skills": [
         "./go-cli-builder",
         "./weeknotes-blog-post-composer",
-        "./daily-blog-post-composer"
+        "./daily-blog-post-composer",
+        "./dev-session"
       ]
     }
   ]
