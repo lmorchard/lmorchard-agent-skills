@@ -165,6 +165,12 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 ### Step 4: Compose Conversational Weeknotes
 
+**CRITICAL - Check Previous Weeknotes:** Before composing, read the most recent weeknotes post from the blog to identify topics and content already covered. Weeknotes should build on previous posts, not repeat them:
+- If a topic was introduced in the previous post (e.g., "Project X is having issues"), this week should provide updates or resolution, not re-explain the original issue
+- Ongoing situations should reference the previous mention briefly (e.g., "As I mentioned last week...") then focus on what's new
+- Do NOT repeat context, descriptions, or explanations that were already provided in the previous post
+- Treat weeknotes as a serial narrative where readers have context from prior installments
+
 **Important:** Do not use template substitution. Instead, read the source markdown and compose it into readable prose.
 
 **Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) - conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. **CRITICAL:** Format ALL Miscellanea items as bullet points, including bookmarks and links - do NOT create a separate "Bookmarks and Reading" section.
@@ -368,9 +374,9 @@ if [ -d "content/posts" ]; then
 fi
 ```
 
-**If running from the user's blog directory**, use this naming convention:
+**If running from the user's blog directory**, use this directory-based structure:
 ```
-content/posts/{YYYY}/{YYYY-MM-DD-wWW}.md
+content/posts/{YYYY}/{YYYY-MM-DD-wWW}/index.md
 ```
 
 Where:
@@ -379,8 +385,15 @@ Where:
 - `{wWW}` = ISO week number for today (e.g., w16, w17, w42)
 
 Examples:
-- `content/posts/2025/2025-04-18-w16.md` (Week 16, published April 18, 2025)
-- `content/posts/2025/2025-11-13-w46.md` (Week 46, published November 13, 2025)
+- `content/posts/2025/2025-04-18-w16/index.md` (Week 16, published April 18, 2025)
+- `content/posts/2025/2025-11-13-w46/index.md` (Week 46, published November 13, 2025)
+
+**Why use a directory structure?**
+Using a directory (page bundle) instead of a flat file provides several benefits:
+1. **Co-located assets**: Images and attachments can be stored alongside the post
+2. **Cleaner organization**: All post-related files are grouped together
+3. **Easier management**: Moving or archiving a post means moving one directory
+4. **Jekyll/Hugo compatibility**: This is a standard pattern for static site generators
 
 **To calculate the week number and filename**, use the helper script:
 ```bash
@@ -394,13 +407,16 @@ cd /path/to/weeknotes-blog-post-composer
 ./scripts/calculate-week.py --json
 ```
 
-This script uses **today's date** (not the start date) and calculates the ISO week number, generating the correct filename format: `content/posts/{year}/{date}-w{week}.md`
+This script uses **today's date** (not the start date) and calculates the ISO week number, generating the correct directory path: `content/posts/{year}/{date}-w{week}/index.md`
 
-**Important:** Ensure the year directory exists before saving:
-```python
-import os
-year_dir = f"content/posts/{start_date.year}"
-os.makedirs(year_dir, exist_ok=True)
+**Important:** Ensure both the year directory and post directory exist before saving:
+```bash
+# Create the directory structure
+mkdir -p content/posts/2026/2026-01-14-w03
+
+# Then write the index.md file
+# Use the Write tool to create the file at:
+# content/posts/2026/2026-01-14-w03/index.md
 ```
 
 **If not in the blog directory**, save to a temporary location (e.g., `/tmp/weeknotes-YYYY-MM-DD.md`) and ask the user where they'd like to move it
