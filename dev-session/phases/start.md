@@ -11,8 +11,8 @@ Start or resume a dev session.
 
 ## Outputs
 
-- Feature branch created, worktree set up at `.worktrees/{branch-name}/`, dependencies installed, baseline tests green
-- Session directory created at `{base}/{timestamp}-{slug}/` with empty `spec.md`, `research.md`, `plan.md`, `notes.md` — OR existing session identified and current state reported
+- Feature branch created, worktree set up at `.worktrees/{branch-name}/`, dependencies installed, baseline test status reported (green to proceed silently, red surfaced for the user to decide)
+- Session directory created at `{base}/{timestamp}-{slug}/` with `research.md`/`plan.md`/`notes.md` empty and `spec.md` either populated (from a marker-tagged issue or a sketch) or empty (no issue URL) — OR existing session identified and current state reported
 
 ## Process
 
@@ -50,7 +50,7 @@ Start or resume a dev session.
 
 ## After
 
-Report the session directory path and the worktree path. Next step depends on how the session started:
+Step 9 already reported the paths. Next step depends on how the session started:
 
 - **Issue URL with `<!-- dev-session:spec -->` marker** (spec already exists): report that the spec was loaded from the issue, and ask whether to (a) jump into `plan`, (b) run `express` for autonomous execution, or (c) refine the spec via `brainstorm` first.
 - **Issue URL without the marker** (intent is clear, spec needs work): load `phases/brainstorm.md` and proceed directly into the brainstorm flow, using the issue as the task source.

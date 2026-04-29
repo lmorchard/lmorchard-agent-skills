@@ -46,6 +46,7 @@ If `superpowers:subagent-driven-development` is available, invoke it. It dispatc
 ## Resuming after context reset
 
 If you're starting fresh in a new context window:
+- **Verify working directory.** Run `pwd` and confirm you're inside the session's worktree (`.worktrees/{branch-name}/`). If not, `cd` there before doing anything else — running tests or commits from the main checkout will hit the wrong branch.
 - Read `plan.md` — checked boxes show what's done.
 - Verify by running the automated verification commands for the last completed phase. Trust completed work only after fresh evidence confirms it.
 - Pick up from the first unchecked item.

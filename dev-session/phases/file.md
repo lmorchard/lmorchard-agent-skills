@@ -16,7 +16,7 @@ Terminal phase. File the current spec as a GitHub issue and stop. Use this when 
 
 ## Process
 
-1. **Confirm spec is ready.** If `spec.md` has placeholders ("TBD", "TODO", incomplete sections) or open questions without default answers, refuse and recommend `brainstorm` first. A filed spec that's incomplete defeats the purpose. (An "Open questions" section with each question paired to a default answer is fine — those are documented assumptions, not unresolved blockers.)
+1. **Confirm spec is ready.** Verify `spec.md` against the **Readiness checklist** in `references/spec-template.md`. If any criterion fails, refuse and recommend `brainstorm` first — a filed spec that's incomplete defeats the purpose.
 
 2. **Confirm gh CLI access.** Run `gh repo view --json nameWithOwner` to confirm the working directory maps to a GitHub repo and `gh` is authenticated. If not, surface the error rather than guessing.
 
@@ -39,7 +39,7 @@ Terminal phase. File the current spec as a GitHub issue and stop. Use this when 
 
 4. **Title.** Derive from `spec.md` "Goal" line, under 70 chars. Reviewer-readable, not just a slug.
 
-5. **Create the issue.** Use a HEREDOC for the body to preserve formatting:
+5. **Create the issue.** Use a single-quoted HEREDOC (`<<'EOF'`) to preserve formatting and prevent shell expansion of `$variable`-looking strings in the spec body:
    ```
    gh issue create --title "<title>" --body "$(cat <<'EOF'
    <body>

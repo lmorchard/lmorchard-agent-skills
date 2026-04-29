@@ -9,8 +9,8 @@ Add a section like this to the project's `CLAUDE.md`:
 ```markdown
 ## GitHub Project
 
-- **Owner:** `lmorchard` (user or org login)
-- **Number:** `5` (project number from the board URL)
+- **Owner:** `<your-user-or-org-login>` (e.g., `acme-co`)
+- **Number:** `<project-number>` (the integer in the board URL, e.g., `5`)
 - **Status field:** `Status` (the single-select field used for column tracking)
 - **Columns:**
   - `ready: Ready`

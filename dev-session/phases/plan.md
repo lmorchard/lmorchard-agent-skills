@@ -14,13 +14,7 @@ Write an implementation plan from the spec.
 
 ## Process
 
-1. Read `spec.md` and `research.md`. Confirm the spec is ready for implementation against the brainstorm self-review criteria:
-   - **No placeholders:** no "TBD" / "TODO" / vague requirements; "Open questions" only appear with default answers
-   - **Internally consistent:** sections don't contradict each other
-   - **Scope is bounded:** "What we're NOT doing" is present and concrete
-   - **No load-bearing ambiguity:** any requirement that could be read two ways has been pinned
-
-   If any criterion fails, stop and re-open `brainstorm` rather than guessing.
+1. Read `spec.md` and `research.md`. Verify the spec against the **Readiness checklist** in `references/spec-template.md`. If any criterion fails, stop and re-open `brainstorm` rather than guessing.
 
 2. Read the relevant source files to understand the current codebase. Use the patterns and `file:line` refs from `research.md` as the starting point — extend the read only where the plan needs more detail.
 
@@ -54,8 +48,7 @@ Write an implementation plan from the spec.
 
 ## When to skip
 
-- Trivial changes already covered fully by `spec.md` with one obvious implementation path. If `plan.md` would just restate the spec, skip to `execute`.
-- Pure refactors where the diff IS the plan.
+Skip is rare. Even trivial changes benefit from a one-phase plan as a resume mechanism if context resets. The only reasonable case for skipping plan is a single-line edit you can commit immediately — in which case skip `execute` too and go straight to `pr`. (`execute.md` refuses to run without `plan.md`, so "skip plan, then execute" is not a valid path.)
 
 ## When to go back
 

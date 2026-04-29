@@ -24,15 +24,14 @@ If too complex, **push back** — recommend the full interactive flow (`/dev-ses
 
 ## Phase 1: Setup (autonomous)
 
-1. Fetch and read the GitHub issue thoroughly.
-2. Check the project board if configured (see CLAUDE.md). Note priority/size if set.
-3. **Run `phases/start.md` against the issue URL, autonomously.** Complete all of its steps — including marker detection (step 4), worktree setup (step 6), session directory (step 7), and the project-board hook to `in_progress` (step 8). Skip its After-section interactive prompts; we're chaining straight into Phase 2 regardless of what start would have asked.
+1. Fetch and read the GitHub issue thoroughly. If a project board is configured, also note priority/size from the board (the read-only check; the write-side board move happens via start.md step 8 in the next step).
+2. **Run `phases/start.md` against the issue URL, autonomously.** Complete all of its steps — including marker detection (step 4), worktree setup (step 6), session directory (step 7), and the project-board hook to `in_progress` (step 8). Skip its After-section interactive prompts; we're chaining straight into Phase 2 regardless of what start would have asked.
 
 ## Phase 2: Brainstorm (interactive — usually)
 
 Behavior depends on whether the issue already carries a spec:
 
-- **Issue has the `<!-- dev-session:spec -->` marker** (spec was front-loaded via `/dev-session file`): `start` already copied the spec into `spec.md`. Skip the codebase research substep and the Q&A. Instead, run a brief confirmation: show the user the goal, design decisions, and "What we're NOT doing", and ask "Spec still good — proceed to autonomous execution?" If yes, continue. If they want changes, fall back to full brainstorm.
+- **Issue has the `<!-- dev-session:spec -->` marker** (spec was front-loaded via `/dev-session file`): `start` already copied the spec into `spec.md`. Skip the codebase research substep and the Q&A. Instead, run a brief confirmation: show the user the goal, design decisions, and "What we're NOT doing", and ask "Spec still good — proceed to autonomous execution?" If yes, continue. If they want changes, drop to `phases/brainstorm.md` — it will detect the populated `spec.md` and run in refine mode for targeted edits.
 - **Issue has no marker** (raw issue, spec needs developing): run `phases/brainstorm.md` in full:
   1. Codebase research substep (documentarian subagent → `research.md`).
   2. Interactive Q&A grounded in research.

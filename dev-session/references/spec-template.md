@@ -42,9 +42,22 @@ isn't load-bearing. List by name so `plan` and `execute` can refuse them.]
 
 ## Open questions
 
-[Anything the brainstorm couldn't resolve. Each one needs a default answer the
-plan can proceed with, or a flag that this blocks planning.]
+[Anything the brainstorm couldn't resolve. Each entry must either pair with a
+default answer (so plan/execute can proceed under that assumption) OR escalate
+explicitly as "blocks planning — needs decision before proceeding". Don't leave
+bare questions; they fail the readiness checklist.]
 ````
+
+## Readiness checklist
+
+Run this checklist whenever a downstream phase depends on the spec being complete (`brainstorm` self-review, `plan` step 1, `file` pre-check). The spec is ready iff:
+
+1. **Placeholder scan:** no "TBD" / "TODO" / vague requirements anywhere. The "Open questions" section is allowed iff every entry has a default answer paired with it; un-answered questions are placeholders.
+2. **Internal consistency:** sections don't contradict each other. The architecture matches the feature description; the "Patterns to follow" align with the design decisions.
+3. **Scope bounded:** "What we're NOT doing" is present and concrete. The spec is focused enough for a single implementation plan, not two specs in a trench coat.
+4. **No load-bearing ambiguity:** any requirement that could be read two ways has been pinned to one reading.
+
+If any criterion fails, the appropriate response is: re-open `brainstorm` (for `plan` and `file`) or fix inline (within `brainstorm` itself).
 
 ## Notes on use
 

@@ -62,8 +62,9 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
 
 ## When to skip
 
-- The branch is unfinished or has failing checks. Fix first; don't open a half-baked PR.
-- Work that won't go to PR at all (direct-to-main, throwaway, keep-local) — use the alternative paths below.
+- Work that won't end in a PR at all (direct-to-main, throwaway, keep-local). Use the alternative paths below.
+
+(Unfinished branches or failing checks are preconditions, not skip conditions: fix them first, then run `pr`.)
 
 ## Alternative paths
 

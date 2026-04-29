@@ -45,9 +45,7 @@ This separates "thinking" (you, focused) from "doing" (agent, autonomous).
 - **Fallback:** see the inline procedure in `phases/start.md`.
 - Fall back to in-place branch switching only if the project can't support a worktree (uncommitted changes that must stay visible, tooling that requires a fixed path) or the user asks for it.
 
-**Worktree gotcha.** Untracked files in the main checkout are NOT visible from worktrees. Always create the session directory inside the active worktree, not in the main checkout, and verify it's there before writing artifacts.
-
-**Always rebase first.** Fetch and rebase from origin/main before creating new branches.
+**Worktree gotcha.** Untracked files in the main checkout are NOT visible from worktrees. Always create the session directory inside the active worktree, not in the main checkout, and verify it's there before writing artifacts. Always fetch and rebase from origin/main before creating the branch the worktree will track.
 
 **Documentarian agent dispatch.** When dispatching a subagent (`Explore` or `general-purpose`) for codebase research, use the negation rules in `references/documentarian-prompt.md`. This keeps research factual and prevents the agent from rationalizing toward a chosen solution.
 

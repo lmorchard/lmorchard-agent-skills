@@ -1,18 +1,16 @@
 # brainstorm
 
-Brainstorm a spec for the current dev session.
-
-If a GitHub issue URL is provided as an additional argument, fetch and read it as the starting point.
+Brainstorm a spec for the current dev session. Reads from `spec.md` (already populated by `start` if an issue URL was given) and produces a finalized spec ready for `plan` or `file`.
 
 ## Inputs
 
-- The task source (issue, ticket, or user prompt)
-- `spec.md` — any preexisting context
+- `spec.md` — preexisting content from `start` (sketch from raw issue, full spec from marker-tagged issue, or empty for free-form sessions)
+- The task source as context (issue body, user prompt) — usually already captured in `spec.md`
 
 ## Outputs
 
-- `research.md` — codebase findings from the documentarian substep
 - `spec.md` — the finalized spec
+- `research.md` — codebase findings from the documentarian substep (blank-slate mode only; refine mode skips research)
 
 ## Process
 
@@ -33,14 +31,9 @@ If a GitHub issue URL is provided as an additional argument, fetch and read it a
 
 5. **Save the spec to `spec.md`.** Use the structure in `references/spec-template.md`. At minimum: goal, current state, desired end state, design decisions (with reasoning), patterns to follow (with `file:line` refs from research), and an explicit "What we're NOT doing" section to lock scope.
 
-6. **Spec self-review** (run in both modes after edits):
-   - **Placeholder scan:** any "TBD", "TODO", incomplete sections, or vague requirements? Fix them. (Note: the spec template's "Open questions" section is fine *if* each question has a default answer; un-answered questions are placeholders.)
-   - **Internal consistency:** do sections contradict each other? Does the architecture match feature descriptions?
-   - **Scope check:** focused enough for a single implementation plan, or does it need decomposition into sub-projects?
-   - **Ambiguity check:** could any requirement be interpreted two different ways? Pick one and make it explicit.
-
-   Fix issues inline. Then ask the user to review the written spec before moving to `plan`.
+6. **Spec self-review** (run in both modes after edits). Apply the **Readiness checklist** in `references/spec-template.md`. Fix any failures inline, then ask the user to review the written spec before moving to `plan`.
 
 ## When to go back
 
-If research uncovers a constraint that invalidates the framing of the task, surface it and re-anchor the brainstorm before writing the spec. If the spec, on self-review, reveals it's actually two specs that need to be split, say so and offer to decompose into sub-project specs — each gets its own session.
+- **Blank-slate mode:** if research uncovers a constraint that invalidates the framing of the task, surface it and re-anchor the brainstorm before writing the spec.
+- **Either mode:** if the spec, on self-review, reveals it's actually two specs that need to be split, say so and offer to decompose into sub-project specs — each gets its own session.

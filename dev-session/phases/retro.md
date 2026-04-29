@@ -15,7 +15,7 @@ End the current dev session with a retrospective. The goal is captured learning,
 
 ## Process
 
-1. Think carefully about the session and write notes to `notes.md` in the session directory. Cover:
+1. Think carefully about the session and **append** to `notes.md` in the session directory under a `## Retrospective` section — don't overwrite. `notes.md` may already contain a `## Filed` section from a prior `file` invocation, or other content. Cover:
    - **Brief recap** of what was actually built (or filed, if the session ended at `file`).
    - **Scope drift:** what changed between spec and ship, and why. (For file-terminated sessions: how the spec evolved during brainstorm.)
    - **Surprises:** things in the codebase or task that didn't match expectations.
