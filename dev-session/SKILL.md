@@ -61,6 +61,17 @@ This separates "thinking" (you, focused) from "doing" (agent, autonomous).
 
 **Verification before completion.** Never claim a phase is done, tests pass, or a build succeeds without having run the verification command in the current message and read the output. Evidence before claims, always. No "should pass" / "I'm confident" / "looks correct" without fresh evidence. This applies in `execute` (per-phase) and `pr` (before opening).
 
+## References
+
+| File | Purpose |
+|---|---|
+| `references/spec-template.md` | Skeleton for `spec.md`; used by `brainstorm` |
+| `references/plan-template.md` | Skeleton for `plan.md`; used by `plan` |
+| `references/pr-body-template.md` | Skeleton for the PR body; used by `pr` |
+| `references/documentarian-prompt.md` | Negation rules for the codebase research subagent in `brainstorm` |
+| `references/makefile-conventions.md` | Expected Makefile targets and fallbacks |
+| `references/github-projects.md` | Optional Projects v2 board integration (CLAUDE.md schema, transition commands) |
+
 ## When NOT to use
 
 - One-line tweaks, doc fixes, single-grep sed-replacements — overhead exceeds value.

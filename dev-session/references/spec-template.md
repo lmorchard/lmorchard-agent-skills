@@ -56,3 +56,10 @@ plan can proceed with, or a flag that this blocks planning.]
 ## Filing as a GitHub issue
 
 `/dev-session file` lifts this spec into a GitHub issue body and prepends the marker `<!-- dev-session:spec -->`. The marker is how `start` and `express` later recognize that the issue carries a complete spec (not just a raw bug report) and skip brainstorm. Don't strip the marker if you edit the issue manually — it's the resume-detection signal.
+
+A few sections drop or transform during filing:
+- **Source** is dropped (the issue *is* the source).
+- **Open questions** is kept only if questions remain with their default answers; fully resolved questions get dropped.
+- **`file:line` refs** are kept verbatim, even though they may drift over time. They reflect the codebase at filing time; the resumer can re-research if a reference no longer exists.
+
+After loading via `start`, the in-session `spec.md` won't have a Source line — that's expected, not a bug.

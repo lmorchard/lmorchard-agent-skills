@@ -23,7 +23,7 @@ The skill reads these as declarative names. The agent resolves the underlying Gr
 
 If any of `Owner`, `Number`, `Status field`, or the four `Columns` entries are missing, treat the integration as not configured and skip all transitions.
 
-## ID resolution (once per phase)
+## ID resolution (once per session)
 
 GitHub Projects v2 needs four IDs to move an item: project ID, item ID, field ID, single-select option ID. Resolve them once, hold in memory:
 
@@ -60,7 +60,7 @@ gh project item-edit \
 |---|---|---|
 | `file` | → `ready` | After issue creation. Add to project first if missing. |
 | `start` (with issue URL) | → `in_progress` | After worktree setup, before brainstorm. Skip if no issue URL. |
-| `pr` | → `in_review` | After the PR is opened (step 5 of pr.md). The linked issue is the one referenced via `Closes #N`. |
+| `pr` | → `in_review` | After the PR is opened (step 6 of pr.md). The linked issue is the one referenced via `Closes #N`. |
 | (merge) | → `done` | Out of scope — `Closes #N` auto-closes the issue and most boards auto-move to Done on close. |
 
 ## When to skip

@@ -16,7 +16,7 @@ Terminal phase. File the current spec as a GitHub issue and stop. Use this when 
 
 ## Process
 
-1. **Confirm spec is ready.** If `spec.md` has placeholders, "TBD", or open questions without default answers, refuse and recommend `brainstorm` first. A filed spec that's incomplete defeats the purpose.
+1. **Confirm spec is ready.** If `spec.md` has placeholders ("TBD", "TODO", incomplete sections) or open questions without default answers, refuse and recommend `brainstorm` first. A filed spec that's incomplete defeats the purpose. (An "Open questions" section with each question paired to a default answer is fine — those are documented assumptions, not unresolved blockers.)
 
 2. **Confirm gh CLI access.** Run `gh repo view --json nameWithOwner` to confirm the working directory maps to a GitHub repo and `gh` is authenticated. If not, surface the error rather than guessing.
 
@@ -47,7 +47,7 @@ Terminal phase. File the current spec as a GitHub issue and stop. Use this when 
    )"
    ```
 
-6. **Project conventions.** Check `CLAUDE.md` for default labels, assignees, or a project board. If specified, apply them (`--label`, `--assignee`, `--project`). Don't guess.
+6. **Project conventions.** Check `CLAUDE.md` for default labels and assignees. If specified, apply them (`--label`, `--assignee`). Don't guess. (Project-board membership is handled by step 8 — don't pass `--project` here.)
 
 7. **Append to `notes.md`** under a `## Filed` section:
    ```

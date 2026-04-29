@@ -10,6 +10,7 @@ Full express dev session — interactive brainstorm, then autonomous through PR 
 ## Outputs
 
 - All artifacts produced by the orchestrated phases: branch + worktree, session directory, `research.md`, `spec.md`, `plan.md`, code changes, commits, opened PR with Copilot review addressed
+- PR URL — the primary consumable output, reported at the end
 - Summary of what was fixed and what was skipped during the Copilot cycle
 
 ## Phase 0: Complexity check
@@ -25,9 +26,7 @@ If too complex, **push back** — recommend the full interactive flow (`/dev-ses
 
 1. Fetch and read the GitHub issue thoroughly.
 2. Check the project board if configured (see CLAUDE.md). Note priority/size if set.
-3. Fetch and rebase from origin/main before creating a branch.
-4. Create a feature branch derived from the issue title. Set up the worktree at `.worktrees/{branch-name}/` per `phases/start.md` (use `superpowers:using-git-worktrees` if available, including dependency install and baseline test verification). `cd` into the worktree.
-5. Create the session directory inside the worktree with `spec.md`, `research.md`, `plan.md`, `notes.md`.
+3. **Run `phases/start.md` against the issue URL, autonomously.** Complete all of its steps — including marker detection (step 4), worktree setup (step 6), session directory (step 7), and the project-board hook to `in_progress` (step 8). Skip its After-section interactive prompts; we're chaining straight into Phase 2 regardless of what start would have asked.
 
 ## Phase 2: Brainstorm (interactive — usually)
 

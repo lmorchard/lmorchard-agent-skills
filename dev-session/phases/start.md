@@ -22,9 +22,11 @@ Start or resume a dev session.
 
 3. **Branch.** Check the current git branch. If on main, ask for a branch name or derive it from context (e.g., from a GitHub issue URL if provided as an extra argument). Strip prefixes like `feature/`, `fix/`, `chore/` when deriving a slug.
 
-4. **Issue context.** If a GitHub issue URL is provided, fetch it for context and use it to derive the branch name. Then check the issue body for the marker `<!-- dev-session:spec -->`:
-   - **Marker present:** the issue was filed by `/dev-session file` and embeds a complete spec. Strip the marker and the trailing "_Filed by_" footer, copy the body into `spec.md`, and treat brainstorm as already done. (Note this in the post-setup report so the user can decide to refine it before planning.)
-   - **No marker:** use the issue contents as an initial spec sketch — brainstorm will refine it.
+4. **Issue context.** If a GitHub issue URL is provided, fetch it for context and use it to derive the branch name. Check the issue body for the marker `<!-- dev-session:spec -->` and remember the result:
+   - **Marker present:** the issue was filed by `/dev-session file` and embeds a complete spec. Capture the body (stripping the marker line and the trailing `_Filed by_` footer) for use in step 7. The marker state changes the After-section behavior.
+   - **No marker:** capture the issue title + body as an initial spec sketch for use in step 7.
+
+   If no issue URL was provided, skip this step entirely.
 
 5. **Fetch and rebase from origin/main.**
 
@@ -35,7 +37,12 @@ Start or resume a dev session.
    d. Run any project setup (venv / `npm install` / `cargo build` / `go mod download`) auto-detected from project files.
    e. Run the project's test suite (`make test`, or the native equivalent per `references/makefile-conventions.md`) to verify a clean baseline. Report failures rather than proceeding silently — ask the user whether to continue or investigate.
 
-7. **Create the session directory** inside the worktree at `{base}/{timestamp}-{slug}/` with empty `spec.md`, `research.md`, `plan.md`, and `notes.md`. (Inside the worktree, not the main checkout — untracked files don't transfer between worktrees.)
+7. **Create the session directory** inside the worktree at `{base}/{timestamp}-{slug}/` with `research.md`, `plan.md`, and `notes.md` empty. For `spec.md`:
+   - **Marker captured in step 4:** write the captured spec body to `spec.md`. Brainstorm is effectively done — refine mode applies if it runs.
+   - **Sketch captured in step 4:** write the sketch to `spec.md` as a starting point for brainstorm.
+   - **No issue URL:** leave `spec.md` empty.
+
+   (Create inside the worktree, not the main checkout — untracked files don't transfer between worktrees.)
 
 8. **Project board hook.** If working from an issue URL and a GitHub Project is configured (see `references/github-projects.md`), move the issue to the configured `in_progress` column. Skip silently if no issue URL or no project configured.
 

@@ -66,4 +66,4 @@ build:
 
 - **Targets are discovery, not magic.** Anything in the Makefile is one `grep` away from being found by the next agent or contributor.
 - **Prefer composition over duplication.** `make check` should call `make lint` and `make test`, not re-invoke their tools.
-- **Don't mock around with formatting requirements** of Make: real tabs (not spaces) at the start of recipe lines.
+- **Don't mess around with formatting requirements** of Make: real tabs (not spaces) at the start of recipe lines.

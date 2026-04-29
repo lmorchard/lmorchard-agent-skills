@@ -14,7 +14,13 @@ Write an implementation plan from the spec.
 
 ## Process
 
-1. Read `spec.md` and `research.md`. Confirm the spec is ready for implementation. If not, ask for more details.
+1. Read `spec.md` and `research.md`. Confirm the spec is ready for implementation against the brainstorm self-review criteria:
+   - **No placeholders:** no "TBD" / "TODO" / vague requirements; "Open questions" only appear with default answers
+   - **Internally consistent:** sections don't contradict each other
+   - **Scope is bounded:** "What we're NOT doing" is present and concrete
+   - **No load-bearing ambiguity:** any requirement that could be read two ways has been pinned
+
+   If any criterion fails, stop and re-open `brainstorm` rather than guessing.
 
 2. Read the relevant source files to understand the current codebase. Use the patterns and `file:line` refs from `research.md` as the starting point — extend the read only where the plan needs more detail.
 

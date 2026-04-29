@@ -42,6 +42,7 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
    ```
    gh pr edit <number> --add-reviewer copilot-pull-request-reviewer
    ```
+   The `copilot-pull-request-reviewer` slug is the current GitHub-published bot identity — if it's renamed or your install uses a different one, this command will silently no-op. Confirm with `gh api repos/{owner}/{repo}/assignees | jq '.[] | select(.type=="Bot")'` if you're unsure.
 
 8. **Poll for new review comments.** Use:
    ```
