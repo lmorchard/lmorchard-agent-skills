@@ -1,14 +1,14 @@
-# {{"{{"}} .Title {{"}}"}}
+# {{ .Title }}
 
-_Generated: {{"{{"}} .Generated {{"}}"}}_
-
----
-
-{{"{{"}} range .Items -{{"}}"}}
-## {{"{{"}} .Name {{"}}"}}
-
-{{"{{"}} .Description {{"}}"}}
+_Generated: {{ .Generated }}_
 
 ---
 
-{{"{{"}} end -{{"}}"}}
+{{ range .Items -}}
+## {{ .Name }}
+
+{{ .Description }}
+
+---
+
+{{ end -}}

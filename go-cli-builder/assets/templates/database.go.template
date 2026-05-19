@@ -42,12 +42,12 @@ func New(dbPath string) (*DB, error) {
 
 	// Initialize schema and run migrations
 	if err := db.InitSchema(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	if err := db.RunMigrations(); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 

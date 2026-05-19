@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"os"
 
-	"{{.ModuleName}}/internal/templates"
+	"{{MODULE_NAME}}/internal/templates"
 	"github.com/spf13/cobra"
 )
 
-const defaultConfigContent = `# Configuration file for {{.ProjectName}}
-# Copy this to {{.ProjectName}}.yaml and customize as needed
+const defaultConfigContent = `# Configuration file for {{PROJECT_NAME}}
+# Copy this to {{PROJECT_NAME}}.yaml and customize as needed
 
 # Database configuration
-database: "{{.ProjectName}}.db"
+database: "{{PROJECT_NAME}}.db"
 
 # Logging configuration
 verbose: false
@@ -31,24 +31,24 @@ log_json: false
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize configuration and template files",
-	Long: ` + "`" + `Create default configuration file and custom template file for customization.
+	Long: `Create default configuration file and custom template file for customization.
 
 This command generates:
-  - {{.ProjectName}}.yaml (configuration file)
-  - {{.ProjectName}}.md (customizable template, or use --template-file to specify)
+  - {{PROJECT_NAME}}.yaml (configuration file)
+  - {{PROJECT_NAME}}.md (customizable template, or use --template-file to specify)
 
 Use --force to overwrite existing files.
 
 Example:
-  {{.ProjectName}} init
-  {{.ProjectName}} init --template-file my-template.md
-  {{.ProjectName}} init --force` + "`" + `,
+  {{PROJECT_NAME}} init
+  {{PROJECT_NAME}} init --template-file my-template.md
+  {{PROJECT_NAME}} init --force`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		log := GetLogger()
 		force, _ := cmd.Flags().GetBool("force")
 		templateFile, _ := cmd.Flags().GetString("template-file")
 
-		configFile := "{{.ProjectName}}.yaml"
+		configFile := "{{PROJECT_NAME}}.yaml"
 
 		// Check if config file exists
 		configExists := fileExists(configFile)
@@ -94,7 +94,7 @@ Example:
 		fmt.Printf("Next steps:\n")
 		fmt.Printf("  1. Edit %s and add your configuration\n", configFile)
 		fmt.Printf("  2. (Optional) Customize %s for your preferred output format\n", templateFile)
-		fmt.Printf("  3. Run: {{.ProjectName}} <command> --help for usage information\n\n")
+		fmt.Printf("  3. Run: {{PROJECT_NAME}} <command> --help for usage information\n\n")
 
 		return nil
 	},
@@ -103,7 +103,7 @@ Example:
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().Bool("force", false, "Overwrite existing files")
-	initCmd.Flags().String("template-file", "{{.ProjectName}}.md", "Name of custom template file to create")
+	initCmd.Flags().String("template-file", "{{PROJECT_NAME}}.md", "Name of custom template file to create")
 }
 
 // fileExists checks if a file exists
