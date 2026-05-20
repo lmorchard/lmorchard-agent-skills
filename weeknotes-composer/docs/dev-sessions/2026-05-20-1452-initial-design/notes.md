@@ -83,26 +83,74 @@ SKILL.md against the cached `combined.md`. Output saved to
   fallback, since the controller cwd was `x-to-markdown` not a blog
   directory).
 
+### Catchup-window trial (controller, interactive)
+
+After the weekly trial, ran a second composition over a 4-week
+catchup window (2026-04-24 → 2026-05-20) — the user noted that
+weekly is the standard cadence but they'd been remiss and missed
+multiple weeks.
+
+- Export: 4,406 lines, 6 sections all non-empty (Mastodon 3048,
+  Linkding 814, GitHub 302, Spotify 79, YouTube 40, Pocket Casts 122).
+- GitHub size barely changed vs the weekly export (302 → 306) — the
+  events API window is short enough that a longer `--since` doesn't
+  surface much more. Linkding grew ~10×. Mastodon ~1.6×.
+- First catchup draft used title `"April 20 – May 20, 2026 (monthly
+  catchup)"` and added a `monthly` tag. User pushed back: this isn't
+  a monthly mode, it's a regular weeknote that happens to cover
+  multiple weeks. Re-ran with corrected window (2026-04-24) and
+  corrected framing. Final draft: `/tmp/weeknotes-2026-04-24-to-2026-05-20.md`.
+- The corrected-window draft surfaced a major missed thread: the
+  user's first tattoo (May 1-2). The wrong-window draft had picked
+  up the backyard-pond opening posts from April 20-23 (which would
+  have been in the previous weeknote) and missed the tattoo as the
+  lead.
+- Mastodon at 3000+ lines required deliberate sampling — grep for
+  `^### My Posts$` boundaries, read those chunks, treat boosts/favs
+  as thematic anchors via spot reads rather than sequential reading.
+
 ## SKILL.md findings worth a follow-up
 
-These were observed during the live composition trial and are worth
-considering as future SKILL.md edits (not blockers for this session):
+These were observed during the two live composition trials and are
+worth considering as future SKILL.md edits (not blockers for this
+session):
 
 1. **Linkding "always Miscellanea" is too rigid.** When a bookmark
-   becomes thematically central (e.g., the Emacsification piece felt
-   essential to the week's tech-work-mood arc), it wants to be quoted
-   in a real section, not summarized in a bullet. The Per-Source
-   Treatment rule for Linkding should probably parallel GitHub:
-   *default to Miscellanea, promote when thematically central*.
+   becomes thematically central (e.g., the Emacsification piece in
+   the weekly trial, the cluster of AI-coding pieces in the catchup
+   trial), it wants to be quoted in a real section, not summarized
+   in a bullet. The Per-Source Treatment rule for Linkding should
+   probably parallel GitHub: *default to Miscellanea, promote when
+   thematically central*. This was observed in both trials.
 
-2. **No guidance for huge Mastodon sections.** This week's Mastodon
-   output was 1829 lines — too much to read in one pass. SKILL.md
-   doesn't suggest a sampling strategy. A useful addition: when the
-   Mastodon section is very large, skim by day, focus first on
-   `### My Posts` subsections (the prose driver), then check boosts
-   and favorites for items that connect to your-own-post themes.
+2. **Catchup weeknotes (windows > 7 days) need light accommodation,
+   not a separate mode.** The standard cadence is weekly. When the
+   user occasionally misses a few weeks, the resulting catchup post
+   is still a weeknote — same voice, same structure, just a wider
+   window. Specific accommodations to add to SKILL.md:
+   - **Title:** when window > 7 days, use a date-range or
+     "Catching up: …" prefix rather than `{year} Week {week}`. The
+     `calculate-week.py` helper assumes weekly cadence — for catchup
+     windows, the title should explicitly span the period.
+   - **Tags:** stay with `weeknotes` + content tags. Do NOT add
+     `monthly` or similar — the post is still a weeknote.
+   - **"Carryover from last week" framing** doesn't apply when
+     catching up; the previous post is older and probably less
+     relevant. SKILL.md's Step 4 (check most recent weeknote) should
+     note: when the window covers multiple missed weeks, the previous
+     post is less useful as a continuity anchor.
 
-3. **Style archive prompt-once logic was tested without a config
+3. **Sampling strategy for huge Mastodon sections** (related to #2).
+   At weekly scale (~1800 lines) this is annoying but doable. At
+   catchup scale (3000+ lines) it's mandatory:
+   - Grep `^### My Posts$` boundaries first; user's own posts are
+     the prose driver and the only content directly quotable.
+   - For boosts/favorites, do spot reads at thematic anchors
+     identified from My Posts.
+   - Do NOT attempt sequential top-to-bottom reads for windows > 7
+     days. Adding this as explicit guidance in Step 5 would help.
+
+4. **Style archive prompt-once logic was tested without a config
    file present.** I followed the SKILL.md instruction to compose
    without a style reference, but did not write the config file with
    `null` (skipped this since the smoke test shouldn't leave behind
@@ -134,9 +182,11 @@ want to install `me-to-markdown` can keep using it.
 
 - File the upstream bugs against `mastodon-to-markdown` and
   `github-to-markdown` (above).
-- Consider the three SKILL.md tightening ideas above when the new
+- Consider the four SKILL.md tightening ideas above when the new
   skill has been used in earnest a few times — wait for real-world
-  signal before changing prompts.
+  signal before changing prompts. The Linkding-promotion softening
+  and the catchup-window accommodations both replicated across two
+  trials, so those have stronger signal than the others.
 - The me-to-markdown README still has `## Adding a new tool to the
   registry` instructions but doesn't mention the family-contract
   issues (orchestrator #2/#3/#4) that propose `<tool> doctor`,
