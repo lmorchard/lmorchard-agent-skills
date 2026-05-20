@@ -10,7 +10,7 @@ This skill composes weeknotes blog posts in Jekyll-style Markdown by fetching pe
 ## Prerequisites
 
 - `me-to-markdown` is on `$PATH` — verify with `me-to-markdown version`
-- `me-to-markdown install` has populated the per-source binaries into the managed directory
+- `me-to-markdown install` has been run to populate its managed binaries
 - `me-to-markdown auth` has been run (or the user has hand-written the env file at `$XDG_CONFIG_HOME/me-to-markdown/env`)
 - Verify all tools resolve: `me-to-markdown list` — all six tools should show status `path` or `managed`, not `missing`
 - **If any prerequisite fails, the skill MUST direct the user to run the relevant `me-to-markdown` command and stop. The skill MUST NOT attempt to install binaries or run auth flows on the user's behalf.**
@@ -55,7 +55,7 @@ Use ISO date format (`YYYY-MM-DD`) for both flags. The orchestrator handles end-
 
 ### Step 2: Fetch Combined Signal
 
-Run the orchestrator to collect all six sources in parallel:
+With start/end dates from Step 1, run the orchestrator to collect all six sources in parallel:
 
 ```bash
 mkdir -p ~/.claude/cache/weeknotes-composer/data/latest
@@ -76,7 +76,7 @@ Read `~/.claude/cache/weeknotes-composer/data/latest/combined.md`. The file cont
 - `## YouTube`
 - `## Pocket Casts`
 
-Skim each section. Identify themes, note interesting items, get a sense of what this week was actually about. If a section is empty or shows an error block, mention it briefly to the user (e.g., "GitHub came back empty — was there activity this week?") before proceeding.
+Skim each section. Identify themes, note interesting items, get a sense of what this week was actually about. If a source's section is empty or contains an error block, mention it briefly to the user — but treat the active sources (Mastodon, GitHub, Linkding) differently from passive ones (Spotify, YouTube, Pocket Casts). For active sources, absence may be worth flagging ("no Mastodon activity this week — was that intentional?"). For passive sources, absence usually just means a quiet week and you can silently omit them from the composed post.
 
 ### Step 3.5: Style Reference (Optional)
 
@@ -133,7 +133,9 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 ### Step 4: Check Most Recent Weeknote
 
-**CRITICAL — Check Previous Weeknotes:** Before composing, read the most recent weeknotes post from the blog (in `content/posts/`) to identify topics and content already covered. Weeknotes should build on previous posts, not repeat them:
+Step 3.5 was about voice and style. This step is different — it's about content continuity, specifically what NOT to repeat from the previous post.
+
+**CRITICAL — Check Previous Weeknotes:** Before composing, if running from a blog directory (i.e., `content/posts/` exists), find the most recently modified post and read it to identify topics and content already covered. If not in a blog directory, skip this step and note that you're composing without prior-week continuity context. Weeknotes should build on previous posts, not repeat them:
 - If a topic was introduced in the previous post (e.g., "Project X is having issues"), this week should provide updates or resolution, not re-explain the original issue
 - Ongoing situations should reference the previous mention briefly (e.g., "As I mentioned last week...") then focus on what's new
 - Do NOT repeat context, descriptions, or explanations that were already provided in the previous post
@@ -141,7 +143,7 @@ When composing, aim to match this voice rather than writing in a generic blog st
 
 ### Step 5: Compose
 
-**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5) — conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. **CRITICAL:** Format ALL Miscellanea items as bullet points, including bookmarks and links — do NOT create a separate "Bookmarks and Reading" section.
+**Style guidance:** Match the user's voice from past weeknotes (see Step 3.5), and avoid repeating topics from the most recent post (see Step 4) — conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. **CRITICAL:** Format ALL Miscellanea items as bullet points, including bookmarks and links — do NOT create a separate "Bookmarks and Reading" section.
 
 Analyze the fetched content and compose a conversational weeknotes post that:
 
@@ -328,7 +330,7 @@ layout: post
 ---
 ```
 
-**Important — Title Format:** Use `{year} Week {week}` format (e.g., "2025 Week 48" or "2026 Week 21"). Do NOT use a "Weeknotes:" prefix — the `weeknotes` tag already categorizes the post, so the title should be concise. Use `scripts/calculate-week.py` to compute the correct week number.
+**Important — Title Format:** Use `{year} Week {week}` format (e.g., "2025 Week 48" or "2026 Week 21"). Do NOT use a "Weeknotes:" prefix — the `weeknotes` tag already categorizes the post, so the title should be concise. See "Computing the output path" below for how to determine the correct week number.
 
 **Important — Tags:** Always include "weeknotes" as the first tag, then add 2-6 additional contextually appropriate tags based on the content (3-7 tags total). Tags should reflect major themes, technologies, topics, or projects discussed in the post. Examples:
 - Technical topics: `ai`, `javascript`, `golang`, `docker`, `apis`
@@ -353,19 +355,33 @@ if [ -d "content/posts" ]; then
 fi
 ```
 
-**If running from the user's blog directory**, use `scripts/calculate-week.py` to compute the correct path:
+**Computing the output path:**
 
-```bash
-./scripts/calculate-week.py --json
-# Read the `directory` and `filename` fields from the JSON output.
-# Then:
-mkdir -p {directory}
-# Write the post to {filename}
-```
+The path is `content/posts/{YYYY}/{YYYY-MM-DD}-w{WW}/index.md` where:
+- `{YYYY}` is the calendar year of the publication date
+- `{YYYY-MM-DD}` is the publication date in ISO format
+- `{WW}` is the ISO week number for the publication date, zero-padded to two digits (e.g. `w03`, `w42`)
 
-The script uses **today's date** (not the start date) and generates the correct directory path: `content/posts/{YYYY}/{YYYY-MM-DD-wWW}/index.md`
+You can compute this two ways:
 
-Examples:
+1. **Inline (path-independent):** Use the bash tool with a one-liner. Today's path:
+   ```bash
+   python3 -c "from datetime import datetime as d; t=d.now(); s=t.strftime('%Y-%m-%d'); w=t.isocalendar()[1]; print(f'content/posts/{t.year}/{s}-w{w:02d}/index.md')"
+   ```
+   Or for a specific date:
+   ```bash
+   python3 -c "from datetime import datetime as d; t=d.strptime('2026-05-20','%Y-%m-%d'); s=t.strftime('%Y-%m-%d'); w=t.isocalendar()[1]; print(f'content/posts/{t.year}/{s}-w{w:02d}/index.md')"
+   ```
+
+2. **Via the helper script:** The skill includes `scripts/calculate-week.py` (located inside this skill's directory, not in the blog directory). If you know the skill's install path, you can invoke it with `--json` to get all path components at once. Use this when you also want the human-readable title string:
+   ```bash
+   /path/to/weeknotes-composer/scripts/calculate-week.py --date 2026-05-20 --json
+   ```
+   Output includes `slug`, `directory`, `filename`, and `title` fields.
+
+Use whichever method is more convenient. The inline form works from any directory; the script gives the title for the frontmatter as a bonus.
+
+The path uses **today's date** (not the start date) for the publication date. Examples:
 - `content/posts/2025/2025-04-18-w16/index.md` (Week 16, published April 18, 2025)
 - `content/posts/2025/2025-11-13-w46/index.md` (Week 46, published November 13, 2025)
 
