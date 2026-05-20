@@ -1,0 +1,145 @@
+# weeknotes-composer — Session Notes (2026-05-20)
+
+## What was built
+
+A new agent skill at `lmorchard-agent-skills/weeknotes-composer/` that
+composes Jekyll-style weeknotes from six sources of personal signal,
+delegating all data collection and auth to the `me-to-markdown`
+orchestrator. Files added:
+
+- `SKILL.md` — workflow Claude follows when composing
+- `README.md` — human-facing repo README
+- `scripts/calculate-week.py` — ISO-week → filename helper
+
+Commits in `lmorchard-agent-skills`:
+
+| SHA | What |
+|---|---|
+| `a02d00a` | weeknotes-composer: add calculate-week helper |
+| `32a7019` | weeknotes-composer: write SKILL.md |
+| `991e2df` | weeknotes-composer: address review findings in SKILL.md |
+| `f57fb6c` | weeknotes-composer: add README |
+
+Each commit isolated `weeknotes-composer/*` from the repo's pre-existing
+uncommitted work (dev-session edits, go-cli-builder templates). Initial
+commit accidentally swept up three pre-staged files; recovered via
+mixed reset and recommitted cleanly. Subsequent commits used
+`git stash push --staged` to neutralize the pre-staged work during
+commit, then restored it. (Note: `git stash pop` does not preserve
+staged-vs-unstaged distinction — the go-cli-builder files ended this
+session as unstaged-modified rather than staged-modified. Content intact;
+user can re-stage when ready.)
+
+## Adjacent fixes
+
+- **`me-to-markdown/README.md`** (commit `d689889`, pushed to main) —
+  added YouTube to the tool bullet list, slug list, and env-file
+  example; changed "five tools" copy to "six tools".
+- **`linkding-to-markdown/README.md`** (commit `176cbba`, pushed to
+  main) — "See Also" section listed only `mastodon-to-markdown`; added
+  the four other siblings in registry order.
+- Surveyed the other four sibling READMEs (mastodon, github, spotify,
+  pocketcasts). All used generic family references rather than
+  enumerated lists, so no updates needed.
+
+## Smoke test results
+
+### Infrastructure (subagent)
+
+- Built `me-to-markdown` from source via `make build`. Local build
+  shadows installed version via `$PATH`-first resolution.
+- `me-to-markdown list` shows all six tools as `found (managed)`.
+- `me-to-markdown export --since 2026-05-13 --until 2026-05-20` exited
+  cleanly with no per-tool errors. Output: 2,376 lines, 128KB.
+- Section breakdown by line count: Mastodon 1829, Linkding 80,
+  GitHub 306, Spotify 51, YouTube 39, Pocket Casts 65. Section
+  ordering matches registry order.
+- `scripts/calculate-week.py` and the SKILL.md inline-Python
+  equivalent both produce `content/posts/2026/2026-05-20-w21/index.md`
+  for today.
+
+### Composition trial (controller, interactive)
+
+Composed a weeknotes draft for 2026-05-13 → 2026-05-20 following
+SKILL.md against the cached `combined.md`. Output saved to
+`/tmp/weeknotes-2026-05-20.md`. Verification checklist:
+
+- Frontmatter present (title, date, tags x 6, layout, thumbnail) — ✓
+- Title format `2026 Week 21`, no "Weeknotes:" prefix — ✓
+- Opening paragraph with inline `TL;DR:`, then `<!--more-->` — ✓
+- TOC nav present (5 main sections) — ✓
+- Mastodon content composed as first-person prose with linked posts — ✓
+- Boosted/favorited content attributed, not quoted as own — ✓
+- GitHub treated thematically (me-to-markdown family launch) rather
+  than as raw event dump — ✓
+- Linkding integration: 2 of 4 bookmarks ended up in a top-level
+  "Tech-work mood" section (Emacsification + ZIRP pieces) and 2 in
+  Miscellanea (asm.js, Zorker). This is a *deviation* from SKILL.md's
+  "Linkding always in Miscellanea" rule — see SKILL.md findings below.
+- Spotify, YouTube, Pocket Casts: in Miscellanea as bullets — ✓
+- Thumbnail image set to the Tahoe macOS screenshot — ✓
+- No "Generated with Claude Code" footer — ✓
+- Output filename: `/tmp/weeknotes-2026-05-20.md` (the not-in-blog-dir
+  fallback, since the controller cwd was `x-to-markdown` not a blog
+  directory).
+
+## SKILL.md findings worth a follow-up
+
+These were observed during the live composition trial and are worth
+considering as future SKILL.md edits (not blockers for this session):
+
+1. **Linkding "always Miscellanea" is too rigid.** When a bookmark
+   becomes thematically central (e.g., the Emacsification piece felt
+   essential to the week's tech-work-mood arc), it wants to be quoted
+   in a real section, not summarized in a bullet. The Per-Source
+   Treatment rule for Linkding should probably parallel GitHub:
+   *default to Miscellanea, promote when thematically central*.
+
+2. **No guidance for huge Mastodon sections.** This week's Mastodon
+   output was 1829 lines — too much to read in one pass. SKILL.md
+   doesn't suggest a sampling strategy. A useful addition: when the
+   Mastodon section is very large, skim by day, focus first on
+   `### My Posts` subsections (the prose driver), then check boosts
+   and favorites for items that connect to your-own-post themes.
+
+3. **Style archive prompt-once logic was tested without a config
+   file present.** I followed the SKILL.md instruction to compose
+   without a style reference, but did not write the config file with
+   `null` (skipped this since the smoke test shouldn't leave behind
+   per-user config). The prompt-once mechanism wasn't exercised; in
+   real use the skill should write the file on first encounter.
+
+## Upstream bugs surfaced (not in scope for this session)
+
+These came up while reading `combined.md` for composition. Worth
+filing against the per-source tools when convenient — not blockers
+for this session, and not SKILL.md issues:
+
+- **mastodon-to-markdown** triplicates favorites and boosts in the
+  output. E.g., the "hand UNsanitizer" reply appears three times in
+  immediate succession. Affects every multi-day window I saw.
+- **github-to-markdown** event entries all show "pushed 0 commit(s)"
+  for Push events. The push events are recorded, but the commit
+  count/SHAs aren't being parsed from the API response. The rest of
+  the per-event detail (PRs, issues, comments) renders correctly.
+
+## What stayed in legacy `weeknotes-blog-post-composer`
+
+The legacy skill is untouched and continues to work for its narrower
+(Mastodon + Linkding) flow. It manages its own binaries and per-source
+config under `~/.claude/share/` and `~/.claude/config/`. Users who don't
+want to install `me-to-markdown` can keep using it.
+
+## Next sessions
+
+- File the upstream bugs against `mastodon-to-markdown` and
+  `github-to-markdown` (above).
+- Consider the three SKILL.md tightening ideas above when the new
+  skill has been used in earnest a few times — wait for real-world
+  signal before changing prompts.
+- The me-to-markdown README still has `## Adding a new tool to the
+  registry` instructions but doesn't mention the family-contract
+  issues (orchestrator #2/#3/#4) that propose `<tool> doctor`,
+  `<tool> version --json`, and standardized `init --force`. Not a
+  doc bug right now (those issues are still open and unresolved),
+  but worth revisiting once they're implemented.
