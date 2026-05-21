@@ -307,6 +307,20 @@ When you find these, embed them in the weeknotes like this:
 - **GitHub** — Thematic project-by-project treatment when there's enough signal. Group events by repo/project. Write about what you actually *did* this week ("spent the week on X, fixed Y") — don't dump raw event lists. Link to specific PRs/commits/issues where they illustrate the story. If GitHub activity was light this week, demote to one or two Miscellanea bullets.
 - **Spotify** — Passive consumption signal. Default to Miscellanea bullets if anything at all. Promote to a dedicated section ONLY when listening was thematically central to the week (e.g., a specific album in heavy rotation tied to a mood or project). Keep volume proportionate — a week of background music ≠ a week's narrative.
 - **YouTube** — Liked-videos signal (deliberate, more meaningful than Spotify plays, but still passive consumption). Default to Miscellanea bullets. Promote to a section only when a video or theme was notably influential. **When transcripts are available** (see Step 2.5), prefer the transcript prose over the title as your composition source — titles like "How America Experienced Classic Doctor Who" only hint at the content; the transcript reveals the actual argument. Quote sparingly (videos are someone else's words, not yours — same plagiarism guard as boosts/favorites applies), but cite specific moments or claims to make the bullet substantive.
+
+  **Embed component (`<youtube-embed>`).** The blog has a custom element for inline YouTube players. Use it like this, on its own line as its own paragraph (blank line before and after):
+
+  ```html
+  <youtube-embed video-id="VIDEO_ID"></youtube-embed>
+  ```
+
+  `VIDEO_ID` is the 11-character YouTube identifier (the `v=` parameter from a `youtube.com/watch?v=...` URL, or the path from a `youtu.be/...` URL). Do NOT manually set a `thumbnail` attribute. The blog has a `localize-images` build task that discovers `<youtube-embed>` elements, downloads the YouTube thumbnail, saves it into the post's page bundle with a content-addressed filename, and rewrites the markup to add `thumbnail="<hash>.jpg"`. Older posts in the archive already show this rewritten form — that's the build pipeline's output, not what the author types.
+
+  When to embed (heuristic — be selective, embeds are heavy):
+  - Use an embed when a video is being discussed *substantively* (its own paragraph, multiple sentences, transcript-derived content). Place the embed immediately after the prose that introduces it.
+  - Do NOT embed every video in a Miscellanea list-cluster (e.g., a "retro-tech YouTube" bullet with five links) — that clutters the page. Plain markdown link text is the right form there.
+  - Do NOT embed videos that are drive-by mentions or that you cite but didn't actually engage with.
+  - Rough budget: 0–3 embeds per post is healthy; more than that and the videos start dominating the reading flow.
 - **Pocket Casts** — Podcast listening signal. Miscellanea bullets by default; dedicated section only when a specific episode or show drove the week's thinking.
 
 The composer's job is to identify what *actually mattered* this week, not to give every source equal column inches. A week with no GitHub activity but heavy Mastodon discussion produces a post dominated by Mastodon. A week of deep work on one project produces a GitHub-thematic post. The combined.md file is raw signal; the post is curated narrative.
