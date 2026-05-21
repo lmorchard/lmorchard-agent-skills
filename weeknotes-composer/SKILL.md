@@ -167,6 +167,8 @@ Step 3.5 was about voice and style. This step is different — it's about conten
 - Do NOT repeat context, descriptions, or explanations that were already provided in the previous post
 - Treat weeknotes as a serial narrative where readers have context from prior installments
 
+**Catchup-window caveat:** When the composing window spans multiple weeks (more than ~7 days), the previous post is older than "last week" and is less load-bearing as a continuity anchor. Still skim it briefly, but it's expected that this post will re-introduce some context the reader hasn't seen recently — that's a feature of catchup posts, not a violation of the no-repetition rule. A reasonable touchpoint: "Last weeknote was [N] weeks ago; here's what's happened since…"
+
 ### Step 5: Compose
 
 **Style guidance:** Match the user's voice from past weeknotes (see Step 3.5), and avoid repeating topics from the most recent post (see Step 4) — conversational, self-deprecating, with parenthetical asides and comfortable with tangents. Start with an opening paragraph containing an inline "TL;DR: ..." summary (not a header), followed by `<!--more-->` on its own line. Use a "Miscellanea" section near the end (just before the conclusion) as a grab-bag for brief observations and items that didn't fit under other thematic sections. **CRITICAL:** Format ALL Miscellanea items as bullet points, including bookmarks and links — do NOT create a separate "Bookmarks and Reading" section.
@@ -303,7 +305,7 @@ When you find these, embed them in the weeknotes like this:
 #### Per-Source Treatment
 
 - **Mastodon** — Primary narrative driver. Write in first-person prose. Only quote your own posts directly; summarize boosts/favorites with attribution ("someone on Mastodon pointed out...") or use blockquotes. Always link to posts with 3-5 word link text. Embed images inline (single) or use `<image-gallery>` (3+). All the plagiarism-guard rules from the Mastodon composition section above apply.
-- **Linkding** — Always Miscellanea bullets inside the `weeknote-miscellanea` div. Never a top-level section. Group related bookmarks together; explain *why* something was interesting in the bullet text rather than just pasting a title.
+- **Linkding** — Default to Miscellanea bullets inside the `weeknote-miscellanea` div. Group related bookmarks together; explain *why* something was interesting in the bullet text rather than just pasting a title. **Promote to a top-level section** when a cluster of 2+ bookmarks shares a thematic arc that's load-bearing for the week — e.g., "a month of bookmarks all circling the same question about coding-with-agents" wants a real section (with quoted excerpts and connecting prose), not a flat list. The mirror of the GitHub rule: bullets when light, section when thematically central. Plagiarism guard applies to bookmark excerpts the same way it does to Mastodon boosts — quote sparingly, attribute, and link.
 - **GitHub** — Thematic project-by-project treatment when there's enough signal. Group events by repo/project. Write about what you actually *did* this week ("spent the week on X, fixed Y") — don't dump raw event lists. Link to specific PRs/commits/issues where they illustrate the story. If GitHub activity was light this week, demote to one or two Miscellanea bullets.
 - **Spotify** — Passive consumption signal. Default to Miscellanea bullets if anything at all. Promote to a dedicated section ONLY when listening was thematically central to the week (e.g., a specific album in heavy rotation tied to a mood or project). Keep volume proportionate — a week of background music ≠ a week's narrative.
 - **YouTube** — Liked-videos signal (deliberate, more meaningful than Spotify plays, but still passive consumption). Default to Miscellanea bullets. Promote to a section only when a video or theme was notably influential. **When transcripts are available** (see Step 2.5), prefer the transcript prose over the title as your composition source — titles like "How America Experienced Classic Doctor Who" only hint at the content; the transcript reveals the actual argument. Quote sparingly (videos are someone else's words, not yours — same plagiarism guard as boosts/favorites applies), but cite specific moments or claims to make the bullet substantive.
@@ -370,7 +372,12 @@ layout: post
 ---
 ```
 
-**Important — Title Format:** Use `{year} Week {week}` format (e.g., "2025 Week 48" or "2026 Week 21"). Do NOT use a "Weeknotes:" prefix — the `weeknotes` tag already categorizes the post, so the title should be concise. See "Computing the output path" below for how to determine the correct week number.
+**Important — Title Format:** Two cases.
+
+- **Weekly cadence (window ≤ 7 days):** Use `{year} Week {week}` (e.g., "2025 Week 48" or "2026 Week 21"). See "Computing the output path" below for how to determine the correct week number.
+- **Catchup cadence (window > 7 days):** Use a date range or "Catching up:" prefix (e.g., "Catching up: April 24 – May 20, 2026"). The `{year} Week {week}` format implies a single ISO week and is misleading when the window covers several. Pick whichever feels least clinical — date range is most informative; "Catching up: …" is friendlier prose.
+
+In both cases: do NOT use a "Weeknotes:" prefix — the `weeknotes` tag already categorizes the post.
 
 **Important — Tags:** Always include "weeknotes" as the first tag, then add 2-6 additional contextually appropriate tags based on the content (3-7 tags total). Tags should reflect major themes, technologies, topics, or projects discussed in the post. Examples:
 - Technical topics: `ai`, `javascript`, `golang`, `docker`, `apis`
@@ -379,6 +386,8 @@ layout: post
 - Themes: `productivity`, `tools`, `workflows`
 
 Analyze the composed content and choose tags that genuinely reflect what the post is about.
+
+**Catchup-window tags:** Even for posts covering multiple weeks (window > 7 days), keep `weeknotes` as the first tag and do NOT add `monthly`, `catchup`, `multi-week`, or similar meta-tags. Catchup posts are still weeknotes — same voice, same archive, same RSS feed. The meta-tag would partition the archive arbitrarily.
 
 2. **Composed content** — The conversational weeknotes you composed in Step 5 and revised in Step 6
 
