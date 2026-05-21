@@ -19,6 +19,10 @@ Commits in `lmorchard-agent-skills`:
 | `32a7019` | weeknotes-composer: write SKILL.md |
 | `991e2df` | weeknotes-composer: address review findings in SKILL.md |
 | `f57fb6c` | weeknotes-composer: add README |
+| `0e94c8a` | weeknotes-composer: dev session artifacts (spec, plan, notes) |
+| `fd0a6fc` | weeknotes-composer: notes — catchup-window trial + corrected findings |
+| `1ff67f1` | weeknotes-composer: integrate optional youtube transcripts |
+| `42da8e0` | weeknotes-composer: SKILL.md — advise `<youtube-embed>` for substantive video cites |
 
 Each commit isolated `weeknotes-composer/*` from the repo's pre-existing
 uncommitted work (dev-session edits, go-cli-builder templates). Initial
@@ -157,19 +161,85 @@ session):
    per-user config). The prompt-once mechanism wasn't exercised; in
    real use the skill should write the file on first encounter.
 
-## Upstream bugs surfaced (not in scope for this session)
+## Late-session SKILL.md additions (after the initial findings)
 
-These came up while reading `combined.md` for composition. Worth
-filing against the per-source tools when convenient — not blockers
-for this session, and not SKILL.md issues:
+These were added mid-session in response to follow-up requests; they
+shipped already, not deferred.
 
-- **mastodon-to-markdown** triplicates favorites and boosts in the
-  output. E.g., the "hand UNsanitizer" reply appears three times in
-  immediate succession. Affects every multi-day window I saw.
-- **github-to-markdown** event entries all show "pushed 0 commit(s)"
-  for Push events. The push events are recorded, but the commit
-  count/SHAs aren't being parsed from the API response. The rest of
-  the per-event detail (PRs, issues, comments) renders correctly.
+5. **YouTube transcripts integration (commit `1ff67f1`).**
+   `youtube-to-markdown` ships an optional `transcripts render`
+   subcommand that emits transcript prose for liked videos in a window
+   (offline-only, reads a local cache populated by a separate
+   `transcripts fetch` step that requires `yt-dlp`). SKILL.md now
+   includes a new Step 2.5 that runs `transcripts render`
+   unconditionally — if the cache is empty for the window, the
+   companion file says `_No transcripts available in this window._`
+   and the skill falls back to title-only YouTube content. If the
+   cache is populated, the composer reads the transcripts alongside
+   `combined.md` and uses the prose as the substantive source for
+   YouTube content. The skill MUST NOT run `transcripts fetch` — that
+   stays a user-driven workflow (yt-dlp dependency, network calls,
+   can fail).
+
+   Verified end-to-end against the catchup window: 13 of the liked
+   videos in 2026-04-24 → 2026-05-20 had cached transcripts, including
+   the Doctor Who essay and the OpenClaw video. The OpenClaw transcript
+   in particular — a substantive AI-coding-platform autopsy — slotted
+   directly into the existing AI-coding bookmarks section as a real
+   case study, which would have been impossible from the title alone.
+
+6. **`<youtube-embed>` component guidance (commit `42da8e0`).**
+   The blog has a custom element `<youtube-embed video-id="..."></youtube-embed>`
+   for inline YouTube players. SKILL.md now advises emitting it
+   (on its own line, in its own paragraph) when a video is being
+   discussed substantively — own paragraph, multiple sentences,
+   transcript-derived content. Bullet-list clusters get plain markdown
+   links; drive-by mentions get plain links. Rough budget: 0–3 embeds
+   per post.
+
+   No `thumbnail` attribute — the blog's `localize-images` build task
+   discovers `<youtube-embed>` elements, downloads the YouTube
+   thumbnail, content-addresses it into the post's page bundle, and
+   rewrites the markup to add `thumbnail="<hash>.jpg"`. Archived posts
+   show the rewritten form; the author types just the bare element.
+
+   Note: the user initially referred to the element as
+   `<youtube-video>`; verified against a live archived post that the
+   actual name is `<youtube-embed>`. Good reminder to check live
+   markup before encoding details into a skill that will be invoked
+   without further review.
+
+## Upstream bugs surfaced + outcomes
+
+These came up while reading `combined.md` for composition. Both were
+filed as issues; one was fixed in this session, one remains open.
+
+- **mastodon-to-markdown** — favourites triplicated in fetch output.
+  Originally reported as "boosts and favourites"; on diagnosis only
+  favourites were affected (boosts come through `GetAccountStatuses`
+  which paginates correctly by status.ID). Root cause: the favourites
+  loop allocated a fresh `*mastodonAPI.Pagination` every iteration,
+  discarding the in-place cursor update the go-mastodon library makes
+  via the Link-header response (`mastodon.go:131`, `*pg = *pg2`). The
+  manually-set `MaxID = favorites[last].ID` was also the wrong cursor
+  type — the favourites endpoint paginates by an internal
+  favourite-entry id, not a status id.
+  - Filed: [#3](https://github.com/lmorchard/mastodon-to-markdown/issues/3)
+  - Fixed in: [`592e1a4`](https://github.com/lmorchard/mastodon-to-markdown/commit/592e1a4) (pushed to main)
+  - Verified: every previously-triplicated URL now appears 1x;
+    unique-URL coverage unchanged (57 → 57); output ~1/3 the size.
+
+- **github-to-markdown** — Push events all render as "pushed 0
+  commit(s)" regardless of actual commit count. Other event types
+  (PR, Issue, Comment, Branch create/delete) render correctly. The
+  PushEvent payload includes a `commits` array (up to 20 commits with
+  sha/message/author) and a `size` field which would be a simpler
+  read; neither appears to be parsed.
+  - Filed: [#4](https://github.com/lmorchard/github-to-markdown/issues/4)
+  - **Still open at end of session.** Most natural "what's next" since
+    the bug pattern is similar (single tool, narrow scope, clear repro)
+    and Push events are by far the most common event type in any
+    activity feed.
 
 ## What stayed in legacy `weeknotes-blog-post-composer`
 
@@ -180,16 +250,31 @@ want to install `me-to-markdown` can keep using it.
 
 ## Next sessions
 
-- File the upstream bugs against `mastodon-to-markdown` and
-  `github-to-markdown` (above).
+- **Fix the github-to-markdown push-event bug** (issue
+  [#4](https://github.com/lmorchard/github-to-markdown/issues/4)) —
+  natural next step. The bug pattern is similar to the mastodon
+  triplication: single tool, narrow scope, clear repro from existing
+  exports. Likely a JSON-path issue (`payload.commits` vs `payload.size`
+  vs whichever field the renderer is reading). Push events are the
+  most common event type in any activity feed, so the impact is
+  comparable to the mastodon bug.
+- Mastodon bug filing + fix is **done** this session (issue #3
+  closed by `592e1a4`).
 - Consider the four SKILL.md tightening ideas above when the new
   skill has been used in earnest a few times — wait for real-world
   signal before changing prompts. The Linkding-promotion softening
   and the catchup-window accommodations both replicated across two
-  trials, so those have stronger signal than the others.
+  trials, so those have stronger signal than the others. Items #5
+  and #6 (transcripts + `<youtube-embed>`) shipped in this session.
 - The me-to-markdown README still has `## Adding a new tool to the
   registry` instructions but doesn't mention the family-contract
   issues (orchestrator #2/#3/#4) that propose `<tool> doctor`,
   `<tool> version --json`, and standardized `init --force`. Not a
   doc bug right now (those issues are still open and unresolved),
   but worth revisiting once they're implemented.
+- The three catchup drafts in `/tmp/` are working artifacts only;
+  none have been promoted to the actual blog. If the user wants the
+  catchup post to ship, the canonical version is
+  `/tmp/weeknotes-2026-04-24-to-2026-05-20-with-transcripts.md` and
+  should be moved into the blog's `content/posts/2026/` directory
+  (likely as `2026-05-20-w21/index.md` based on the standard naming).
