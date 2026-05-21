@@ -23,7 +23,11 @@ This skill composes weeknotes blog posts in Jekyll-style Markdown by fetching pe
 mkdir -p ~/.claude/cache/weeknotes-composer/data/latest
 me-to-markdown export --since YYYY-MM-DD --until YYYY-MM-DD \
     -o ~/.claude/cache/weeknotes-composer/data/latest/combined.md
-# Then read combined.md and compose per the workflow below.
+# Optional: also render YouTube transcripts if the cache has any.
+# Offline-only; produces a "no transcripts available" file if cache is empty.
+youtube-to-markdown transcripts render --since YYYY-MM-DD --until YYYY-MM-DD \
+    -o ~/.claude/cache/weeknotes-composer/data/latest/youtube-transcripts.md
+# Then read both files and compose per the workflow below.
 ```
 
 ## Composing Weeknotes
@@ -65,6 +69,26 @@ me-to-markdown export --since YYYY-MM-DD --until YYYY-MM-DD \
 
 If the exit code is non-zero, the orchestrator has already written per-tool error sections into `combined.md`. Surface those error sections to the user (so they know which source failed and why), but continue composing with whatever signal did come through. A partial run is better than no post.
 
+### Step 2.5: Fetch YouTube Transcripts (Optional)
+
+`youtube-to-markdown` ships an optional companion command, `transcripts render`, that emits transcript text for liked videos in the window — actual prose, not just titles. This is offline-only (reads from a local cache; no yt-dlp, no network), so it's safe to run unconditionally:
+
+```bash
+youtube-to-markdown transcripts render \
+    --since YYYY-MM-DD --until YYYY-MM-DD \
+    -o ~/.claude/cache/weeknotes-composer/data/latest/youtube-transcripts.md
+```
+
+If `youtube-to-markdown` is on `$PATH` (it should be after `me-to-markdown install`), run this. If the binary isn't found, skip silently.
+
+Look at the resulting file. Three outcomes:
+
+- **Populated** — multiple `### [Title](URL)` blocks each followed by prose. Use this content when composing the YouTube section; transcripts are the actual signal here, not the title-only listings in `combined.md`.
+- **`_No transcripts available in this window._`** — the user has not run `youtube-to-markdown transcripts fetch` for this window. The cache is empty for this period. Compose YouTube content from titles only (as in `combined.md`), and at the END of the workflow (Step 9 feedback) mention the user can run `youtube-to-markdown transcripts fetch --since YYYY-MM-DD --until YYYY-MM-DD` (requires `yt-dlp` installed) before re-running the skill if they want richer YouTube context next time.
+- **Some videos with transcripts, others without** — use transcript prose where available; treat the rest as title-only.
+
+The skill MUST NOT run `transcripts fetch` itself — that step requires yt-dlp, makes network calls, takes time, can fail, and is intentionally a user-driven workflow.
+
 ### Step 3: Read and Analyze
 
 Read `~/.claude/cache/weeknotes-composer/data/latest/combined.md`. The file contains six section headers in registry order:
@@ -77,6 +101,8 @@ Read `~/.claude/cache/weeknotes-composer/data/latest/combined.md`. The file cont
 - `## Pocket Casts`
 
 Skim each section. Identify themes, note interesting items, get a sense of what this week was actually about. If a source's section is empty or contains an error block, mention it briefly to the user — but treat the active sources (Mastodon, GitHub, Linkding) differently from passive ones (Spotify, YouTube, Pocket Casts). For active sources, absence may be worth flagging ("no Mastodon activity this week — was that intentional?"). For passive sources, absence usually just means a quiet week and you can silently omit them from the composed post.
+
+If Step 2.5 produced a populated transcripts file, also read `~/.claude/cache/weeknotes-composer/data/latest/youtube-transcripts.md`. For videos with transcripts, the prose body is the substantive content — the title alone is rarely enough to know whether a video was thematically central. Skim for ideas, arguments, vivid moments, or things that connect to the week's other threads.
 
 ### Step 3.5: Style Reference (Optional)
 
@@ -280,7 +306,7 @@ When you find these, embed them in the weeknotes like this:
 - **Linkding** — Always Miscellanea bullets inside the `weeknote-miscellanea` div. Never a top-level section. Group related bookmarks together; explain *why* something was interesting in the bullet text rather than just pasting a title.
 - **GitHub** — Thematic project-by-project treatment when there's enough signal. Group events by repo/project. Write about what you actually *did* this week ("spent the week on X, fixed Y") — don't dump raw event lists. Link to specific PRs/commits/issues where they illustrate the story. If GitHub activity was light this week, demote to one or two Miscellanea bullets.
 - **Spotify** — Passive consumption signal. Default to Miscellanea bullets if anything at all. Promote to a dedicated section ONLY when listening was thematically central to the week (e.g., a specific album in heavy rotation tied to a mood or project). Keep volume proportionate — a week of background music ≠ a week's narrative.
-- **YouTube** — Liked-videos signal (deliberate, more meaningful than Spotify plays, but still passive consumption). Default to Miscellanea bullets. Promote to a section only when a video or theme was notably influential.
+- **YouTube** — Liked-videos signal (deliberate, more meaningful than Spotify plays, but still passive consumption). Default to Miscellanea bullets. Promote to a section only when a video or theme was notably influential. **When transcripts are available** (see Step 2.5), prefer the transcript prose over the title as your composition source — titles like "How America Experienced Classic Doctor Who" only hint at the content; the transcript reveals the actual argument. Quote sparingly (videos are someone else's words, not yours — same plagiarism guard as boosts/favorites applies), but cite specific moments or claims to make the bullet substantive.
 - **Pocket Casts** — Podcast listening signal. Miscellanea bullets by default; dedicated section only when a specific episode or show drove the week's thinking.
 
 The composer's job is to identify what *actually mattered* this week, not to give every source equal column inches. A week with no GitHub activity but heavy Mastodon discussion produces a post dominated by Mastodon. A week of deep work on one project produces a GitHub-thematic post. The combined.md file is raw signal; the post is curated narrative.
@@ -479,3 +505,4 @@ If the config file is absent, the skill prompts the user once and creates it —
 - `scripts/calculate-week.py` — ISO week number + output filename helper. Run with `--json` to get machine-readable `directory` and `filename` fields.
 - `~/.claude/config/weeknotes-composer/config.json` — Optional skill config. Contains only the `weeknotes_archive` style reference URL (or `null`).
 - `~/.claude/cache/weeknotes-composer/data/latest/combined.md` — Most recent fetched signal from `me-to-markdown export`. Ephemeral; safe to delete.
+- `~/.claude/cache/weeknotes-composer/data/latest/youtube-transcripts.md` — Optional companion file from `youtube-to-markdown transcripts render`. Contains prose bodies for liked videos with cached transcripts; present only when the user has run `youtube-to-markdown transcripts fetch` for the window. Ephemeral; safe to delete.
