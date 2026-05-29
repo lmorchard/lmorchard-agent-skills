@@ -29,6 +29,7 @@ If `superpowers:subagent-driven-development` is available, invoke it. It dispatc
    - Run automated verification: `make lint`, `make test`, `make check` plus any phase-specific commands (see SKILL.md "Makefile-first" for fallbacks). Fix failures before proceeding.
    - **Verification before completion:** read the actual output before ticking any checkbox (see SKILL.md "Verification before completion").
    - Tick `- [ ]` → `- [x]` for each automated checkbox in `plan.md` as it passes.
+   - **Pre-commit `git status` check.** Before committing, run `git status` and confirm: every file the phase intended to edit is staged; nothing unexpected is included. Catches the "subagent did `git mv` then edited but forgot `git add`" failure mode where a commit lands a renamed-but-stale file and tests still pass in the working tree.
    - Commit the phase as one commit with a descriptive message (`Phase N: <name>`). One commit per phase keeps phases independently revertable.
    - Present manual verification items to the user. In interactive mode, wait for confirmation before ticking manual checkboxes and proceeding to the next phase. In `express` mode, skip manual pauses (they happen at the branch self-review instead).
 

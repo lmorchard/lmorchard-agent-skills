@@ -22,7 +22,9 @@ Write an implementation plan from the spec.
 
 4. **TDD by default** (see SKILL.md "Test-driven by default"). Each slice starts with a failing test for the behavior. Document opt-outs explicitly — pure refactoring, doc-only changes, infrastructure scaffolding without behavior.
 
-5. **Write `plan.md`.** Use the structure in `references/plan-template.md`. One section per phase. Each phase MUST include:
+5. **Structural-invariant tests for single-source-of-truth refactors.** When the spec consolidates multiple computations or filters into one canonical value (e.g., two filters that should always produce the same number, two code paths that should always be in sync), include a phase that adds a *structural* test asserting the invariant — not just a regression test for the originally-reported bug. The structural test guards against future drift in places the bug-specific regression test won't cover, and during execution it often surfaces additional accounting holes the spec missed (since "the totals should match" is a stronger property than "this specific input should produce this specific output").
+
+6. **Write `plan.md`.** Use the structure in `references/plan-template.md`. One section per phase. Each phase MUST include:
    - **Files** — paths and what changes in each
    - **Key changes** — type signatures, new functions, or non-trivial code snippets
    - **Verification — automated** — `- [ ]` checkboxes for `make lint` / `make test` / `make check` / phase-specific commands (see `references/makefile-conventions.md`)
@@ -30,18 +32,18 @@ Write an implementation plan from the spec.
 
    Checkboxes are mandatory. `execute` ticks them off as it progresses, and they are the resume mechanism if context resets mid-session.
 
-6. **Scope discipline.** Only include changes described in `spec.md`. No drive-by refactoring, no "while we're here" cleanup, no improvements to adjacent code — even if it's obviously messy. Note worth-fixing items separately for a future session.
+7. **Scope discipline.** Only include changes described in `spec.md`. No drive-by refactoring, no "while we're here" cleanup, no improvements to adjacent code — even if it's obviously messy. Note worth-fixing items separately for a future session.
 
-7. **No placeholders.** The following are plan failures — never write them:
+8. **No placeholders.** The following are plan failures — never write them:
    - "TBD", "TODO", "implement later", "fill in details"
    - "Add appropriate error handling" / "add validation" / "handle edge cases" without showing how
    - "Write tests for the above" without actual test code
    - "Similar to phase N" — repeat the relevant detail; phases may be read out of order
    - References to types, functions, or methods not defined in any phase
 
-8. **Plan self-review:**
+9. **Plan self-review:**
    - **Spec coverage:** skim each requirement in `spec.md`. Can you point to a phase that implements it? List gaps and fill them.
-   - **Placeholder scan:** check the plan for the red flags in step 7.
+   - **Placeholder scan:** check the plan for the red flags in step 8.
    - **Type consistency:** do the types, signatures, and property names in later phases match what earlier phases defined? A function called `clearLayers()` in phase 3 but `clearFullLayers()` in phase 7 is a bug.
 
    Fix issues inline. Present findings before asking for human review — in interactive mode, wait for approval; in `express` mode, fix and continue.

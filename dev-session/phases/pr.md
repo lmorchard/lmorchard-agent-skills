@@ -18,7 +18,9 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
 
 ## Process
 
-1. **Branch self-review.** Review `git diff origin/main..HEAD` for:
+1. **Rebase onto `origin/main` before anything else.** `git fetch origin && git rebase origin/main`. Long sessions are common; main advances. Self-review and squash both depend on a meaningful diff vs. `origin/main` — pre-rebase, `git diff origin/main..HEAD` may show dozens of unrelated files from commits you haven't picked up yet, drowning out your actual changes. Re-run the full verification (`make test`, `make check`) after the rebase even if you ran it minutes ago — origin/main may have introduced fixture or behavior changes that affect your code. If conflicts surface, resolve them now, not after the PR is open.
+
+2. **Branch self-review.** Review `git diff origin/main..HEAD` for:
    - **Bugs introduced:** wrong logic, missing imports, changed behavior unintentionally
    - **Incomplete changes:** renamed something in one place but missed another, removed a function but left callers
    - **Edge cases:** hidden files/dirs not filtered, path traversal, off-by-one, empty inputs
@@ -28,37 +30,40 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
 
    Fix anything found before proceeding. This catches issues Copilot often misses (and vice versa).
 
-2. **Verification before completion:** before opening the PR, run `make lint`, `make test`, and `make check` and confirm green (see SKILL.md "Verification before completion" and "Makefile-first"). Do not open a PR with red checks.
+3. **Verification before completion:** before opening the PR, run `make lint`, `make test`, and `make check` and confirm green (see SKILL.md "Verification before completion" and "Makefile-first"). Do not open a PR with red checks.
 
-3. **Squash all commits** on the branch into one with a comprehensive message.
+4. **Re-check `origin/main` immediately before squashing.** `git fetch origin && git log --oneline main..origin/main`. Even if step 1 ran a few minutes ago, main may have advanced again — and a soft-reset-then-commit squash performed against a stale `origin/main` will silently include deletions of files that landed in between (e.g., a sibling PR merged). If new commits appear, redo the rebase + verification before squashing.
 
-4. **Push the branch** to remote.
+5. **Squash all commits** on the branch into one with a comprehensive message.
 
-5. **Open the PR** using `references/pr-body-template.md` for the body structure. Title under 70 chars; details in the body. Include `Closes #N` references and pointers to `spec.md` and `plan.md`.
+6. **Push the branch** to remote.
 
-6. **Project board hook.** If a GitHub Project is configured (see `references/github-projects.md`), move each issue referenced via `Closes #N` to the configured `in_review` column. Skip silently if not configured.
+7. **Open the PR** using `references/pr-body-template.md` for the body structure. Title under 70 chars; details in the body. Include `Closes #N` references and pointers to `spec.md` and `plan.md`.
 
-7. **Request a Copilot review:**
+8. **Project board hook.** If a GitHub Project is configured (see `references/github-projects.md`), move each issue referenced via `Closes #N` to the configured `in_review` column. Skip silently if not configured.
+
+9. **Request a Copilot review:**
    ```
    gh pr edit <number> --add-reviewer copilot-pull-request-reviewer
    ```
    The `copilot-pull-request-reviewer` slug is the current GitHub-published bot identity — if it's renamed or your install uses a different one, this command will silently no-op. Confirm with `gh api repos/{owner}/{repo}/assignees | jq '.[] | select(.type=="Bot")'` if you're unsure.
 
-8. **Poll for new review comments.** Use:
-   ```
-   gh api repos/{owner}/{repo}/pulls/{number}/comments --jq 'length'
-   ```
-   Poll every 30s for up to 10 minutes. Stop early once the count goes above the pre-request baseline. Give up if none arrive in that window and report the timeout.
+10. **Poll for new review comments.** Use:
+    ```
+    gh api repos/{owner}/{repo}/pulls/{number}/comments --jq 'length'
+    ```
+    Poll every 30s for up to 10 minutes. Stop early once the count goes above the pre-request baseline. Give up if none arrive in that window and report the timeout.
 
-9. **Assess each Copilot comment:**
-   - **Fix:** real bugs, valid edge cases, missing error handling, doc/code mismatches, missing test coverage
-   - **Skip:** over-engineering, theoretical concerns without real risk, style nitpicks
+11. **Assess each Copilot comment:**
+    - **Fix:** real bugs, valid edge cases, missing error handling, doc/code mismatches, missing test coverage
+    - **Skip:** over-engineering, theoretical concerns without real risk, style nitpicks
+    - **Defer:** real correctness issues that are pre-existing and outside this PR's spec scope. File as a follow-up issue, link from a PR comment, and explicitly note the deferral in the PR description's "References" section so reviewers and future-you see the trail. Don't silently skip a real-but-out-of-scope issue.
 
-10. **Fix worthwhile comments.** Lint, test, commit.
+12. **Fix worthwhile comments.** Lint, test, commit.
 
-11. **Squash again and force-push** with `--force-with-lease` (refuses if remote has commits you haven't fetched, preventing silent overwrites of work pushed from another machine).
+13. **Squash again and force-push** with `--force-with-lease` (refuses if remote has commits you haven't fetched, preventing silent overwrites of work pushed from another machine). Before squashing, re-run step 4's origin/main check — main may have advanced during the Copilot poll-and-fix cycle too.
 
-12. **Report** the PR URL, what was fixed, and what was skipped (with brief reasoning).
+14. **Report** the PR URL, what was fixed, and what was skipped (with brief reasoning).
 
 ## When to skip
 
