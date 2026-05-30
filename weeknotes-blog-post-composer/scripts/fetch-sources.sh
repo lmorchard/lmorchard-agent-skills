@@ -5,17 +5,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 # Default to last 7 days (from 7 days ago through today)
-# Note: The APIs treat end date as exclusive, so we use tomorrow's date
 get_week_dates() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS date command
         START_DATE=$(date -v-7d +%Y-%m-%d)
-        END_DATE=$(date -v+1d +%Y-%m-%d)
+        END_DATE=$(date +%Y-%m-%d)
     else
-        # Linux date command
         START_DATE=$(date -d "7 days ago" +%Y-%m-%d)
-        END_DATE=$(date -d "tomorrow" +%Y-%m-%d)
+        END_DATE=$(date +%Y-%m-%d)
     fi
+}
+
+# Locate the me-to-markdown orchestrator binary.
+# Resolution order: $ME_TO_MARKDOWN_BIN -> $PATH.
+find_orchestrator() {
+    if [ -n "${ME_TO_MARKDOWN_BIN}" ] && [ -x "${ME_TO_MARKDOWN_BIN}" ]; then
+        echo "${ME_TO_MARKDOWN_BIN}"
+        return 0
+    fi
+    if command -v me-to-markdown &> /dev/null; then
+        command -v me-to-markdown
+        return 0
+    fi
+    return 1
 }
 
 # Parse command line arguments
@@ -40,15 +51,22 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: fetch-sources.sh [options]"
             echo ""
+            echo "Fetches a week of personal activity via the me-to-markdown orchestrator,"
+            echo "which fans out to all configured sources (Mastodon, Linkding, GitHub,"
+            echo "Spotify, YouTube, Pocket Casts) and writes one combined Markdown file."
+            echo ""
             echo "Options:"
-            echo "  --start DATE      Start date (YYYY-MM-DD), defaults to Monday of current week"
-            echo "  --end DATE        End date (YYYY-MM-DD), defaults to Sunday of current week"
+            echo "  --start DATE      Start date (YYYY-MM-DD), defaults to 7 days ago"
+            echo "  --end DATE        End date (YYYY-MM-DD), defaults to today"
             echo "  --output-dir DIR  Output directory (default: data/latest)"
             echo "  -h, --help        Show this help message"
             echo ""
+            echo "Environment:"
+            echo "  ME_TO_MARKDOWN_BIN  Override path to the me-to-markdown binary"
+            echo ""
             echo "Examples:"
             echo "  fetch-sources.sh                                    # Fetch this week"
-            echo "  fetch-sources.sh --start 2025-11-01 --end 2025-11-07"
+            echo "  fetch-sources.sh --start 2026-05-21 --end 2026-05-29"
             exit 0
             ;;
         *)
@@ -71,95 +89,46 @@ echo ""
 echo "Fetching data from ${START_DATE} to ${END_DATE}"
 echo ""
 
-# Check if configured
-if [ ! -f "${CONFIG_FILE}" ]; then
-    echo "❌ Not configured yet. Running setup..."
+# Locate the orchestrator
+ORCHESTRATOR="$(find_orchestrator)" || {
+    echo "❌ Could not find the 'me-to-markdown' orchestrator binary."
     echo ""
-    "${SCRIPT_DIR}/setup.sh"
+    echo "   Install it on your \$PATH, or set ME_TO_MARKDOWN_BIN to its location."
+    echo "   Source + build instructions: https://github.com/lmorchard/me-to-markdown"
     echo ""
-fi
-
-# Check if binaries exist
-if [ ! -f "${BIN_DIR}/mastodon-to-markdown" ] || [ ! -f "${BIN_DIR}/linkding-to-markdown" ]; then
-    echo "❌ Binaries not found for platform: ${PLATFORM}"
-    echo "   Please run scripts/download-binaries.sh first"
+    echo "   The orchestrator manages its own per-tool binaries and credentials"
+    echo "   (run 'me-to-markdown install' and 'me-to-markdown auth' once)."
     exit 1
-fi
-
-# Load config using jq (if not available, use basic parsing)
-if command -v jq &> /dev/null; then
-    MASTODON_SERVER=$(jq -r .mastodon.server "${CONFIG_FILE}")
-    MASTODON_TOKEN=$(jq -r .mastodon.token "${CONFIG_FILE}")
-    LINKDING_URL=$(jq -r .linkding.url "${CONFIG_FILE}")
-    LINKDING_TOKEN=$(jq -r .linkding.token "${CONFIG_FILE}")
-else
-    echo "⚠️  Warning: jq not found. Using basic config parsing."
-    echo "   Install jq for better config handling: brew install jq"
-    # Basic parsing fallback (not recommended for production)
-    MASTODON_SERVER=$(grep -o '"server"[[:space:]]*:[[:space:]]*"[^"]*"' "${CONFIG_FILE}" | cut -d'"' -f4 | head -1)
-    MASTODON_TOKEN=$(grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' "${CONFIG_FILE}" | cut -d'"' -f4 | head -1)
-    LINKDING_URL=$(grep -o '"url"[[:space:]]*:[[:space:]]*"[^"]*"' "${CONFIG_FILE}" | cut -d'"' -f4 | tail -1)
-    LINKDING_TOKEN=$(grep -o '"token"[[:space:]]*:[[:space:]]*"[^"]*"' "${CONFIG_FILE}" | cut -d'"' -f4 | tail -1)
-fi
+}
+echo "Using orchestrator: ${ORCHESTRATOR}"
+echo ""
 
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
+COMBINED_FILE="${OUTPUT_DIR}/combined.md"
 
-# Create config files for the tools
-MASTODON_CONFIG="${OUTPUT_DIR}/mastodon-config.yaml"
-LINKDING_CONFIG="${OUTPUT_DIR}/linkding-config.yaml"
-
-cat > "${MASTODON_CONFIG}" <<EOF
-mastodon:
-  server: "${MASTODON_SERVER}"
-  access_token: "${MASTODON_TOKEN}"
-EOF
-
-cat > "${LINKDING_CONFIG}" <<EOF
-linkding:
-  url: "${LINKDING_URL}"
-  token: "${LINKDING_TOKEN}"
-EOF
-
-# Fetch from Mastodon
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "📱 Fetching Mastodon posts..."
+echo "📡 Running me-to-markdown export (all sources)..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-"${BIN_DIR}/mastodon-to-markdown" fetch \
-    --config "${MASTODON_CONFIG}" \
-    --start "${START_DATE}" \
-    --end "${END_DATE}" \
-    --output "${OUTPUT_DIR}/mastodon.md" \
-    --verbose
-
-echo "✅ Mastodon posts saved to: ${OUTPUT_DIR}/mastodon.md"
-echo ""
-
-# Fetch from Linkding
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🔖 Fetching Linkding bookmarks..."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-"${BIN_DIR}/linkding-to-markdown" fetch \
-    --config "${LINKDING_CONFIG}" \
+# me-to-markdown auto-loads its shared env file (~/.config/me-to-markdown/env),
+# so each underlying tool sees its own credentials without per-tool plumbing.
+# --omit-errors keeps the combined output clean when a source has no activity
+# or isn't authed; failures still surface on stderr.
+"${ORCHESTRATOR}" export \
     --since "${START_DATE}" \
     --until "${END_DATE}" \
-    --output "${OUTPUT_DIR}/linkding.md" \
-    --verbose
+    --omit-errors \
+    -o "${COMBINED_FILE}"
 
-echo "✅ Linkding bookmarks saved to: ${OUTPUT_DIR}/linkding.md"
+echo "✅ Combined sources saved to: ${COMBINED_FILE}"
 echo ""
-
-# Cleanup config files (they contain secrets)
-rm -f "${MASTODON_CONFIG}" "${LINKDING_CONFIG}"
 
 echo "╔════════════════════════════════════════╗"
 echo "║   Fetch Complete!                      ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 echo "Output directory: ${OUTPUT_DIR}"
-echo "Files:"
-echo "  - mastodon.md"
-echo "  - linkding.md"
+echo "File:"
+echo "  - combined.md  (## Mastodon / Linkding / GitHub / Spotify / YouTube / Pocket Casts)"
 echo ""

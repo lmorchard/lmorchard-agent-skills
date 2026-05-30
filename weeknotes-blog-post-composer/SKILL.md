@@ -7,42 +7,35 @@ description: Compose weeknotes blog posts in Jekyll-style Markdown from multiple
 
 ## Overview
 
-This skill enables composing weeknotes blog posts by automatically fetching content from multiple sources (Mastodon posts and Linkding bookmarks) and combining them into a well-formatted Jekyll-style Markdown document with YAML frontmatter. The skill handles data collection, formatting, and composition into a ready-to-publish blog post. Optionally, the skill can reference past weeknotes to match the user's personal writing style and voice.
+This skill enables composing weeknotes blog posts by automatically fetching content from multiple sources (Mastodon, Linkding, GitHub, Spotify, YouTube, and Pocket Casts, via the `me-to-markdown` orchestrator) and combining them into a well-formatted Jekyll-style Markdown document with YAML frontmatter. The skill handles data collection, formatting, and composition into a ready-to-publish blog post. Optionally, the skill can reference past weeknotes to match the user's personal writing style and voice.
 
 ## Quick Start
 
-When a user first requests to create weeknotes, check if the skill is configured:
+Source data is fetched through the [`me-to-markdown`](https://github.com/lmorchard/me-to-markdown)
+orchestrator, which owns all per-source **credentials** (Mastodon, Linkding,
+GitHub, Spotify, YouTube, Pocket Casts) in its own shared env file. This skill's
+`config.json` is now used only for the optional **weeknotes archive URL** (style
+reference).
+
+**Prerequisites (one-time):**
+1. Install the orchestrator so `me-to-markdown` is on `$PATH` (or set
+   `ME_TO_MARKDOWN_BIN`). See https://github.com/lmorchard/me-to-markdown
+2. Install the per-tool binaries: `me-to-markdown install`
+3. Authenticate every source: `me-to-markdown auth`
+4. Verify: `me-to-markdown list` (should show each tool as `found`)
+
+**Optional skill config (style reference):**
 
 ```bash
-# Check if config exists
 if [ ! -f "$HOME/.claude/config/weeknotes-blog-post-composer/config.json" ]; then
-  echo "First-time setup required."
-  # Run setup script from wherever the skill is installed
+  echo "No skill config yet — run setup.sh to set the weeknotes archive URL."
   ./scripts/setup.sh
 fi
 ```
 
-If configuration doesn't exist:
-1. Inform the user that first-time setup is needed
-2. Ask for their Mastodon server URL and access token
-3. Ask for their Linkding instance URL and API token
-4. Optionally ask for their weeknotes archive URL for style reference
-5. Run `scripts/setup.sh` with their inputs
-
-### Getting API Credentials
-
-**Mastodon Access Token:**
-1. Log into the Mastodon instance
-2. Go to Settings → Development → New Application
-3. Give it a name (e.g., "Weeknotes Composer")
-4. Grant "read" permissions
-5. Copy the access token
-
-**Linkding API Token:**
-1. Log into the Linkding instance
-2. Go to Settings → Integrations
-3. Click "Create Token"
-4. Copy the generated token
+Run `scripts/setup.sh` to set (or update) the weeknotes archive URL used for
+matching the user's writing voice. That URL is the only thing this skill
+configures; all source credentials live with the orchestrator.
 
 ## Composing Weeknotes
 
@@ -71,7 +64,9 @@ So if today is Thursday November 14, 2025:
 
 ### Step 2: Fetch Source Data
 
-Run the fetch script to collect data from all configured sources:
+Run the fetch script to collect data from all configured sources. Under the
+hood this drives the [`me-to-markdown`](https://github.com/lmorchard/me-to-markdown)
+orchestrator, which fans out to every configured source in parallel:
 
 ```bash
 # For current week (automatic date calculation)
@@ -84,13 +79,22 @@ Run the fetch script to collect data from all configured sources:
 ./scripts/fetch-sources.sh --start YYYY-MM-DD --end YYYY-MM-DD --output-dir PATH
 ```
 
-This fetches:
-- Mastodon posts from the specified date range
-- Linkding bookmarks from the specified date range
+This fetches, for the specified date range:
+- **Mastodon** — posts, boosts, favorites
+- **Linkding** — bookmarks
+- **GitHub** — activity (pushes, PRs, reviews, branches)
+- **Spotify** — recently played tracks
+- **YouTube** — liked videos
+- **Pocket Casts** — listening history and starred episodes
 
-Output files are saved to `~/.claude/cache/weeknotes-blog-post-composer/data/latest/` (or specified directory):
-- `mastodon.md` - Formatted Mastodon posts
-- `linkding.md` - Formatted bookmarks
+Output is saved as a single combined file to
+`~/.claude/cache/weeknotes-blog-post-composer/data/latest/` (or specified directory):
+- `combined.md` — all sources, each under a `## {Source}` section header
+
+The orchestrator binary must be installed (`me-to-markdown` on `$PATH`, or set
+`ME_TO_MARKDOWN_BIN`) and authenticated once (`me-to-markdown install` then
+`me-to-markdown auth`). Sources with no activity or missing auth are omitted
+from the output rather than erroring.
 
 ### Step 3: Read and Analyze Source Data
 
@@ -102,15 +106,17 @@ Verify the fetched data is ready and understand what content is available:
 
 This shows which source files are available and their sizes.
 
-Then read the fetched markdown files to understand the content:
+Then read the combined markdown file to understand the content:
 
 ```bash
-# Read Mastodon posts
-cat ~/.claude/cache/weeknotes-blog-post-composer/data/latest/mastodon.md
-
-# Read Linkding bookmarks
-cat ~/.claude/cache/weeknotes-blog-post-composer/data/latest/linkding.md
+cat ~/.claude/cache/weeknotes-blog-post-composer/data/latest/combined.md
 ```
+
+The file is organized into `## Mastodon`, `## Linkding`, `## GitHub`,
+`## Spotify`, `## YouTube`, and `## Pocket Casts` sections. Not every section
+will be a headline — listening/podcast history is often best mined for *themes*
+(what was on heavy rotation, recurring shows) rather than enumerated track by
+track. GitHub activity is a good source for "what I actually built this week."
 
 ### Step 3.5: Review Past Weeknotes for Style Reference (Optional)
 
@@ -191,7 +197,7 @@ Analyze the fetched content and compose a conversational weeknotes post that:
      - Linked to without incorporating their text into the narrative
      - This is extremely important to avoid unintentional plagiarism
    - **IMPORTANT: Embed images inline** when they add value (e.g., `![Alt text](image-url)`)
-   - **Look for posts with Media entries** in the mastodon.md file - these contain images that should be included
+   - **Look for posts with Media entries** in the `## Mastodon` section of combined.md - these contain images that should be included
    - Images are especially important for: cats, interesting screenshots, funny visuals, project photos, etc.
 
 2. **Integrates bookmarks meaningfully** - Don't just list links. Instead:
@@ -276,9 +282,9 @@ Then for bookmarks in Miscellanea, reference them naturally wrapped in the `week
 </div>
 ```
 
-**IMPORTANT: Always scan the mastodon.md for images!**
+**IMPORTANT: Always scan the `## Mastodon` section of combined.md for images!**
 
-The mastodon.md file includes `Media:` entries with image URLs and descriptions. Look for these and include them in your weeknotes. Example from the source:
+The Mastodon entries include `Media:` lines with image URLs and descriptions. Look for these and include them in your weeknotes. Example from the source:
 
 ```
 Media: [image](https://cdn.masto.host/.../image.jpg) - Description of the image
@@ -479,32 +485,28 @@ Review the images already embedded in the post and select one to use as the cove
 
 ### Updating Binaries
 
-To update the Go CLI binaries to the latest releases:
+Source binaries are now managed by the `me-to-markdown` orchestrator, not by
+this skill. To update the orchestrator and its per-tool binaries:
 
 ```bash
-cd /path/to/weeknotes-blog-post-composer
-./scripts/download-binaries.sh
+# Update the orchestrator itself (however you installed it), then refresh tools:
+me-to-markdown install
 ```
 
-This downloads the latest versions of:
-- `mastodon-to-markdown`
-- `linkding-to-markdown`
-
-For all supported platforms (darwin-arm64, darwin-amd64, linux-amd64).
+`me-to-markdown list` shows where each tool resolves and its version. To change
+which sources are authenticated, use `me-to-markdown auth`.
 
 ### Reconfiguring
 
-To update API credentials, change data source settings, or add/update style reference URL:
+This skill's only setting is the optional weeknotes archive URL (style
+reference). To set or update it:
 
 ```bash
 cd /path/to/weeknotes-blog-post-composer
 ./scripts/setup.sh
 ```
 
-The setup script will detect existing configuration and ask for confirmation before reconfiguring. This includes:
-- Mastodon server URL and access token
-- Linkding URL and API token
-- Weeknotes archive URL for style reference (optional)
+Source credentials are not managed here — use `me-to-markdown auth` for those.
 
 ### Customizing the Output Style
 
@@ -529,90 +531,55 @@ Ask the user about their preferences for these aspects when composing weeknotes.
 
 ### Adding New Data Sources
 
-To extend the skill with additional data sources:
+New sources are added to the `me-to-markdown` orchestrator itself (a new
+`*-to-markdown` tool registered in its tool registry), not to this skill. Once
+the orchestrator emits a new `## {Source}` section in `combined.md`, update:
 
-1. Add the new Go CLI binary to `bin/{platform}-{arch}/`
-2. Update `scripts/fetch-sources.sh` to fetch from the new source
-3. Update the SKILL.md Step 3 to instruct Claude to read the new source files
-4. Update Step 4 composition guidance to explain how to integrate the new content
-
-## Platform Detection
-
-All scripts automatically detect the current platform and use the appropriate binary:
-
-- **macOS ARM64**: `bin/darwin-arm64/`
-- **macOS Intel**: `bin/darwin-amd64/`
-- **Linux AMD64**: `bin/linux-amd64/`
-
-Platform detection is handled automatically via `uname` commands. No manual configuration needed.
+1. SKILL.md Step 2/3 to list the new source
+2. Step 4 composition guidance to explain how to integrate the new content
 
 ## Resources
 
 ### scripts/
 
-- `setup.sh` - First-time configuration for API credentials
-- `fetch-sources.sh` - Fetch data from all configured sources
+- `setup.sh` - Set the optional weeknotes archive URL (style reference)
+- `fetch-sources.sh` - Fetch a week of activity via the me-to-markdown orchestrator
 - `prepare-sources.py` - Verify fetched data and prepare for composition
 - `calculate-week.py` - Calculate ISO week number and generate filename for weeknotes
-- `download-binaries.sh` - Update Go CLI binaries to latest releases
 
 ### Runtime Data Directories
 
 All runtime data is stored under `~/.claude/` to keep it separate from skill source code:
 
 **Config** (`~/.claude/config/weeknotes-blog-post-composer/`):
-- `config.json` - User configuration with API credentials and optional settings (created by setup.sh)
-  - Contains Mastodon server URL and access token
-  - Contains Linkding URL and API token
-  - Optionally contains weeknotes_archive URL for style reference
-  - This file contains sensitive tokens and is secured with 600 permissions
-
-**Binaries** (`~/.claude/share/weeknotes-blog-post-composer/bin/`):
-- Pre-compiled Go CLI binaries organized by platform:
-  - `darwin-arm64/` - macOS ARM64
-  - `darwin-amd64/` - macOS Intel
-  - `linux-amd64/` - Linux AMD64
-- `mastodon-to-markdown` - Fetch Mastodon posts as markdown
-- `linkding-to-markdown` - Fetch Linkding bookmarks as markdown
-- Binaries are platform-specific and automatically selected at runtime
+- `config.json` - Created by setup.sh; holds only the optional `weeknotes_archive`
+  URL for style reference. No source credentials live here — those are owned by
+  the `me-to-markdown` orchestrator (see its `auth` command).
 
 **Cache** (`~/.claude/cache/weeknotes-blog-post-composer/data/`):
 - `latest/` - Most recently fetched source data
 - Other directories for historical or custom fetches
-- Contains `mastodon.md` and `linkding.md` after fetching
+- Contains `combined.md` after fetching
 - This is temporary/ephemeral data that can be safely deleted
 
 ## Troubleshooting
 
-### Configuration Issues
+### Orchestrator Not Found
 
-If setup fails:
-- Verify API credentials are correct
-- Check that server URLs are accessible
-- Ensure tokens have appropriate permissions
+If `fetch-sources.sh` can't find `me-to-markdown`:
+- Ensure the binary is on `$PATH`, or set `ME_TO_MARKDOWN_BIN` to its location
+- Verify the per-tool binaries resolve: `me-to-markdown list`
+- Install/refresh tools with `me-to-markdown install`
 
-### Binary Not Found
+### Empty or Missing Sources
 
-If platform detection fails:
-```bash
-# Check current platform
-uname -s  # Should show: Darwin or Linux
-uname -m  # Should show: arm64, x86_64, etc.
-
-# Verify binary exists
-ls -la bin/darwin-arm64/  # Or appropriate platform directory
-```
-
-### Empty Content
-
-If fetched data is empty:
+If a source's section is empty or absent from `combined.md`:
 - Verify the date range includes actual activity
-- Check that API credentials have read permissions
-- Run fetch scripts with `--verbose` flag for debugging
+- Confirm that source is authenticated: `me-to-markdown auth`
+- Run the orchestrator directly with `--since`/`--until` to see stderr detail
 
-### Template Errors
+### Composition
 
-If composition fails with template errors:
-- Verify `assets/weeknotes-template.md` exists and is readable
-- Check that all required placeholders are present
-- Ensure no syntax errors in template YAML frontmatter
+The post is composed directly from `combined.md` — there is no output template
+to maintain. Read the file, match the user's voice (see Step 3.5), and write the
+Jekyll post per Step 6.

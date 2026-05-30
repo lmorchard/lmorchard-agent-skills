@@ -59,43 +59,33 @@ def main():
     print()
 
     # Check for source files
-    mastodon_file = args.input_dir / "mastodon.md"
-    linkding_file = args.input_dir / "linkding.md"
+    # The me-to-markdown orchestrator writes a single combined.md with
+    # per-source sections (Mastodon, Linkding, GitHub, Spotify, YouTube,
+    # Pocket Casts).
+    combined_file = args.input_dir / "combined.md"
 
-    has_mastodon = mastodon_file.exists()
-    has_linkding = linkding_file.exists()
-
-    if not has_mastodon and not has_linkding:
+    if not combined_file.exists():
         print("❌ No source data found!")
-        print(f"   Expected files in: {args.input_dir}")
+        print(f"   Expected combined.md in: {args.input_dir}")
+        print("   Run fetch-sources.sh first.")
         sys.exit(1)
 
+    size = combined_file.stat().st_size
     print("📂 Available source data:")
-    if has_mastodon:
-        size = mastodon_file.stat().st_size
-        print(f"   ✅ Mastodon posts: {mastodon_file} ({size:,} bytes)")
-    else:
-        print(f"   ⚠️  No Mastodon data: {mastodon_file}")
-
-    if has_linkding:
-        size = linkding_file.stat().st_size
-        print(f"   ✅ Linkding bookmarks: {linkding_file} ({size:,} bytes)")
-    else:
-        print(f"   ⚠️  No Linkding data: {linkding_file}")
+    print(f"   ✅ Combined sources: {combined_file} ({size:,} bytes)")
+    print("      Sections: Mastodon, Linkding, GitHub, Spotify, YouTube, Pocket Casts")
 
     print()
     print("╔════════════════════════════════════════╗")
     print("║   Ready for Composition                ║")
     print("╚════════════════════════════════════════╝")
     print()
-    print("Source files are ready to be read and composed into a weeknotes post.")
+    print("Source data is ready to be read and composed into a weeknotes post.")
     print()
     print("Next steps:")
-    print(f"1. Read: {mastodon_file}")
-    if has_linkding:
-        print(f"2. Read: {linkding_file}")
-    print(f"3. Compose conversational weeknotes for {week_range}")
-    print("4. Write the composed post with Jekyll frontmatter")
+    print(f"1. Read: {combined_file}")
+    print(f"2. Compose conversational weeknotes for {week_range}")
+    print("3. Write the composed post with Jekyll frontmatter")
     print()
 
 
