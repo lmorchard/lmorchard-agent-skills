@@ -57,6 +57,8 @@ This separates "thinking" (you, focused) from "doing" (agent, autonomous).
 
 **Subagent-driven execution.** When `superpowers:subagent-driven-development` is available, prefer it for `execute` — fresh subagent per phase, two-stage review (spec compliance + code quality), no context pollution. Fall back to inline only when the skill is unavailable or the user explicitly asks for it.
 
+**Feel-driven features want a prototype, not autonomous execution.** When a feature is dominated by subjective visual/animation/interaction *feel* (waveforms, transitions, easing, layout density, game-juice) — the kind a spec genuinely can't pin down — do NOT route it through autonomous `execute`/`express`. Those lock in visual defaults (shapes, animation model, placement) that the feel-work then discards, and the two-stage reviews dutifully verify a v1 nobody wanted. Instead, during `brainstorm` flag it as feel-driven and plan an **interactive-prototype phase**: build a disposable, slider-driven harness (a single self-contained HTML/Canvas page in a gitignored `tmp/`), iterate with the user until the look is locked, then port the final values into production code + tests once. Seeing beats specifying. (Heuristic: if you find yourself writing "tune by eye" or "TBD, adjust later" into the spec, it's feel-driven.)
+
 **Verification before completion.** Never claim a phase is done, tests pass, or a build succeeds without having run the verification command in the current message and read the output. Evidence before claims, always. No "should pass" / "I'm confident" / "looks correct" without fresh evidence. This applies in `execute` (per-phase) and `pr` (before opening).
 
 ## References
