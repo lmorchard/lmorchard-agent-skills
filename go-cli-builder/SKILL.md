@@ -240,6 +240,144 @@ if templatePath != "" {
 - `linkding-to-markdown` - Fetches bookmarks and generates markdown
 - `mastodon-to-markdown` - Exports Mastodon posts to markdown
 
+## Orchestrator-friendly `export` Contract
+
+**Scope:** this contract applies only to tools whose purpose is to fetch
+data from a source and transform it into a Markdown document. Other Go
+CLIs the skill might be used to build (servers, web apps, generic
+utilities) are not in scope.
+
+Tools that conform to the contract can be orchestrated by
+[`me-to-markdown`](https://github.com/lmorchard/me-to-markdown), which
+runs many such tools in parallel over a single time window and
+concatenates their output into one combined Markdown document.
+
+### The contract
+
+Every fetch-and-export tool exposes an `export` subcommand the orchestrator
+calls:
+
+```
+{tool} export --since <date|duration> [--until <date>] [-o <file>]
+```
+
+- `--since` — **required.** Accepts a Go duration string (`168h`,
+  `30m`), an RFC3339 timestamp, or a `YYYY-MM-DD` date. Durations are
+  interpreted as "ago" relative to now.
+- `--until` — optional. Accepts `YYYY-MM-DD` (end-of-day inclusive in
+  local time) or RFC3339. Defaults to "now" when omitted.
+- `-o` / `--output` — output file path. Empty (or `-`) means stdout.
+
+That's the full surface. Filter, sort, formatting, and other
+tool-specific options stay in the config file rather than the
+`export` flag set — the orchestrator-facing contract is deliberately
+minimal.
+
+### Posture: purely additive
+
+`export` is **added alongside** any existing `fetch`, `sync`, `render`,
+`run`, or root command — never as a replacement. Existing user-visible
+behavior on those commands stays unchanged. This keeps the normalization
+PR low-risk and lets downstream consumers (other tools, scripts, agent
+skills) keep calling whatever they already call.
+
+### Composition pattern
+
+- **Stateless tools** (fetch directly from an API, render in one pass):
+  extract the post-flag-parsing pipeline into a function, then both the
+  legacy `fetch` and the new `export` call it. Example:
+  `mastodon-to-markdown`'s `cmd/fetch.go` exposes a `runFetchPipeline`
+  that takes a `*TimeRange` and an output path; both subcommands build
+  their own time range and delegate.
+- **Archive tools** (local SQLite, `sync` separate from `render`):
+  `export` composes `sync` + windowed `render`. Set viper keys for any
+  values that `render` reads, then call `syncCmd.RunE` then
+  `renderCmd.RunE`. Example: `pocketcasts-to-markdown`'s
+  `cmd/export.go` overrides `render.since` / `render.until` /
+  `render.output` and delegates.
+
+### Time window parser
+
+Drop in this exact file at `internal/timewindow/parse.go`. It's
+duplicated per-tool by design — the contract is small, stable, and not
+worth a cross-repo Go module dependency.
+
+```go
+// Package timewindow parses the canonical --since/--until flag values
+// used by the orchestrator-facing export subcommand.
+package timewindow
+
+import (
+	"fmt"
+	"time"
+)
+
+// Parse interprets s as one of:
+//   - a Go duration string ("168h", "30m") — returned as ref.Add(-d)
+//     (durations are interpreted as "ago" relative to ref);
+//   - an RFC3339 timestamp;
+//   - a YYYY-MM-DD date in the local timezone.
+//
+// When endOfDay is true, a YYYY-MM-DD date is advanced to end-of-day.
+// RFC3339 and durations ignore endOfDay. Empty s returns an error.
+func Parse(s string, ref time.Time, endOfDay bool) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty time value")
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return ref.Add(-d), nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	if t, err := time.ParseInLocation("2006-01-02", s, time.Local); err == nil {
+		if endOfDay {
+			t = t.Add(24*time.Hour - time.Nanosecond)
+		}
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("invalid time %q (expected YYYY-MM-DD, RFC3339, or Go duration)", s)
+}
+```
+
+### Reference implementations
+
+The following tools already implement the contract; lift the patterns
+directly:
+
+- [`mastodon-to-markdown`](https://github.com/lmorchard/mastodon-to-markdown) — stateless, extracts `runFetchPipeline`.
+- [`linkding-to-markdown`](https://github.com/lmorchard/linkding-to-markdown) — stateless, similar shape.
+- [`github-to-markdown`](https://github.com/lmorchard/github-to-markdown) — stateless, root command stays as the implicit fetch.
+- [`pocketcasts-to-markdown`](https://github.com/lmorchard/pocketcasts-to-markdown) — archive tool, simplest implementation (delegates to existing `sync` + `render`).
+- [`spotify-to-markdown`](https://github.com/lmorchard/spotify-to-markdown) — archive tool, more invasive (adds `PlaysBetween` query, threads `--since/--until` through render).
+
+### State / database location
+
+For archive tools, default the local SQLite path to
+`$XDG_STATE_HOME/{tool-name}/state.db`, falling back to
+`~/.local/state/{tool-name}/state.db`. `--database` stays as an escape
+hatch. The orchestrator never overrides this — each tool owns its own
+state directory.
+
+```go
+func xdgStateDir() string {
+	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
+		return filepath.Join(v, "tool-name")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return filepath.Join(home, ".local", "state", "tool-name")
+}
+
+func defaultDatabasePath() string {
+	return filepath.Join(xdgStateDir(), "state.db")
+}
+```
+
+Set this as the viper default for the `database` key.
+
 ## Makefile Targets
 
 All generated projects include these targets:
