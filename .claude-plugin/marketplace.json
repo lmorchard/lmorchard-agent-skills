@@ -20,7 +20,8 @@
         "./daily-blog-post-composer",
         "./dev-session",
         "./send-notification",
-        "./journal-note"
+        "./journal-note",
+        "./television-companion"
       ]
     }
   ]
