@@ -19,7 +19,8 @@
         "./weeknotes-composer",
         "./daily-blog-post-composer",
         "./dev-session",
-        "./send-notification"
+        "./send-notification",
+        "./journal-note"
       ]
     }
   ]
