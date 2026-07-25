@@ -49,6 +49,8 @@ Skeleton for `plan.md`. Each phase is a vertical slice with mandatory automated 
 ## Notes on use
 
 - **Checkboxes are mandatory.** `execute` ticks them off as it progresses; manual items only get checked when the user confirms. They are also the resume mechanism if context resets — read the plan, find the first unchecked item, pick up there.
+- **Three states, not two.** `- [ ]` pending, `- [x]` verified (with the evidence recorded inline — `— **3420 passed**`, not a bare tick), `- [!]` the assertion turned out false. Use `[!]` when the *plan* was wrong rather than the work: a check written from a stale snapshot, a number that isn't stable, a claim the codebase doesn't support. Say what actually happened and whether it's a real failure. Silently deleting the box hides the bad plan; ticking it anyway is faking success.
+- **Don't write single-observation facts as checkable assertions.** "The N known failures are the only ones", "this takes under X seconds", "only these three files match" — if the number came from one run, verify it repeats *before* it becomes a checkbox, or phrase the check as "record which failures appear" instead. This is the most common source of `[!]`.
 - **Code blocks for any non-trivial new code.** Don't write "implement validation logic" — show the validation. The plan should be self-contained enough that an agent reading only `plan.md` could implement the feature.
 - **Repeat shared context across phases.** Phases may be read out of order or after a context reset. "Similar to phase 2" is not adequate.
 - **One commit per phase** keeps phases independently revertable. Commit message format: `Phase N: <name>`.

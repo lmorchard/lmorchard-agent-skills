@@ -28,6 +28,19 @@ End the current dev session with a retrospective. The goal is captured learning,
 
 2. Ask the user one or two open-ended questions worth recording — pick what feels most relevant given the session, don't survey.
 
+## Landing the retro commit
+
+`retro` normally runs before `pr`, so the retrospective rides along in the PR
+squash. When it runs *after* the branch has merged — the user merged early, or
+the session resumed post-merge — the session directory is already on `main` and
+the branch is gone.
+
+In that case don't commit to `main` directly and don't reopen the merged
+branch. Cut a fresh `docs/<slug>-retro` branch from the updated `origin/main`,
+append there, and open a small docs-only PR. Same review gate as any other
+change; the retro is often where the most transferable findings are written
+down, so it's worth the same visibility.
+
 ## What to skip
 
 - Wall-clock time, token count, conversation turns — not actionable.

@@ -28,7 +28,15 @@ If `superpowers:subagent-driven-development` is available, invoke it. It dispatc
    - Implement the changes (via subagent per the preference above, or inline). Follow the plan's intent; if the codebase has diverged in a way the plan didn't anticipate, stop and surface the mismatch rather than silently improvising.
    - Run automated verification: `make lint`, `make test`, `make check` plus any phase-specific commands (see SKILL.md "Makefile-first" for fallbacks). Fix failures before proceeding.
    - **Verification before completion:** read the actual output before ticking any checkbox (see SKILL.md "Verification before completion").
-   - Tick `- [ ]` → `- [x]` for each automated checkbox in `plan.md` as it passes.
+   - Tick `- [ ]` → `- [x]` for each automated checkbox in `plan.md` as it passes. Record the evidence inline next to the box (`— **3420 passed, 2 skipped**`), not just the tick — a bare `[x]` is unverifiable a week later.
+   - **A checkbox that turns out false gets `- [!]`, not a silent drop or a force-tick.** Sometimes a planned assertion is simply wrong — it was written from a stale snapshot, or the plan misread the codebase. Mark it `[!]`, state what actually happened and why it isn't a failure of the work (or that it *is*), and carry the finding into `notes.md`. Deleting the box hides that the plan was wrong; ticking it anyway is faking success. Both destroy the plan's value as a record.
+
+     ```markdown
+     - [!] `make eval-tools`: the four known failures are the only ones —
+           **DOES NOT HOLD.** Not a regression: that harness has its own runner
+           this PR can't reach. The real finding is the failure *set* is
+           unstable run-to-run (4/6/4 across three runs). See notes.md.
+     ```
    - **Pre-commit `git status` check.** Before committing, run `git status` and confirm: every file the phase intended to edit is staged; nothing unexpected is included. Catches the "subagent did `git mv` then edited but forgot `git add`" failure mode where a commit lands a renamed-but-stale file and tests still pass in the working tree.
    - Commit the phase as one commit with a descriptive message (`Phase N: <name>`). One commit per phase keeps phases independently revertable.
    - Present manual verification items to the user. In interactive mode, wait for confirmation before ticking manual checkboxes and proceeding to the next phase. In `express` mode, skip manual pauses (they happen at the branch self-review instead).
