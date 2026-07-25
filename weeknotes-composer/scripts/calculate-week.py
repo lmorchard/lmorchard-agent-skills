@@ -35,6 +35,10 @@ def calculate_week_info(date=None):
         'slug': slug,
         'directory': f"content/posts/{year}/{slug}",
         'filename': f"content/posts/{year}/{slug}/index.md",
+        # The real title leads with a content-derived phrase the script can't
+        # know; compose it as "{descriptive lead} {week_marker}". `title` is the
+        # bare fallback for grab-bag weeks with no single dominant thread.
+        'week_marker': f"(Week {week_number})",
         'title': f"{year} Week {week_number}",
     }
 
@@ -52,11 +56,12 @@ def main():
         import json
         print(json.dumps(info, indent=2))
     else:
-        print(f"Date:      {info['date']}")
-        print(f"ISO Week:  {info['week']}")
-        print(f"Title:     {info['title']}")
-        print(f"Directory: {info['directory']}")
-        print(f"Filename:  {info['filename']}")
+        print(f"Date:        {info['date']}")
+        print(f"ISO Week:    {info['week']}")
+        print(f"Week marker: {info['week_marker']}")
+        print(f"Fallback:    {info['title']}")
+        print(f"Directory:   {info['directory']}")
+        print(f"Filename:    {info['filename']}")
 
 
 if __name__ == '__main__':

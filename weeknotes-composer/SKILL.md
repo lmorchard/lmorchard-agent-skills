@@ -361,7 +361,7 @@ Create the Jekyll blog post file with:
 1. **YAML frontmatter:**
 ```yaml
 ---
-title: "{year} Week {week}"
+title: "{descriptive lead} (Week {week})"
 date: YYYY-MM-DD
 tags:
   - weeknotes
@@ -372,12 +372,16 @@ layout: post
 ---
 ```
 
-**Important — Title Format:** Two cases.
+**Important — Title Format:** The title is the post's discovery surface. On feed readers and aggregators (Bubbles, RSS, link blogs), the title is often *all* a reader sees, so a bare `{year} Week {week}` tells them nothing about a post that may contain a genuinely good story. **Lead the title with what the week was actually about**, then append the week marker so the weeknotes cadence stays legible.
 
-- **Weekly cadence (window ≤ 7 days):** Use `{year} Week {week}` (e.g., "2025 Week 48" or "2026 Week 21"). See "Computing the output path" below for how to determine the correct week number.
-- **Catchup cadence (window > 7 days):** Use a date range or "Catching up:" prefix (e.g., "Catching up: April 24 – May 20, 2026"). The `{year} Week {week}` format implies a single ISO week and is misleading when the window covers several. Pick whichever feels least clinical — date range is most informative; "Catching up: …" is friendlier prose.
+The slug and URL are decoupled from the title: the output directory is always `…/{YYYY-MM-DD}-w{WW}/` (see "Computing the output path"), which is what fixes ordering, archive, and permalinks. The `title:` field is free prose and changing it never moves the URL. So a descriptive title costs nothing structurally.
 
-In both cases: do NOT use a "Weeknotes:" prefix — the `weeknotes` tag already categorizes the post.
+- **Weekly cadence (window ≤ 7 days):** `{descriptive lead} (Week {week})` — e.g. "A masochist and his MacBook (Week 26)" or "starnet ate the month (Week 25)". Derive the lead from the post's dominant section — the thread that got the most column inches — phrased in the author's voice (reusing a strong section heading is encouraged). Keep it short; one clause, not a summary of every topic. Harley's bar is low and correct: just give the reader *some* idea what the post is about.
+- **Catchup cadence (window > 7 days):** `{descriptive lead} (Catching up: {date range})` — e.g. "Cat drama and a month of starnet (Catching up: May 29 – June 18)". The plain `{year} Week {week}` form is doubly wrong here: opaque *and* it implies a single ISO week when the window spans several.
+
+If the week genuinely had no single dominant thread (a true grab-bag), it's acceptable to fall back to `{year} Week {week}`, but treat that as the exception, not the default — most weeks have a lead.
+
+In all cases: do NOT use a "Weeknotes:" prefix — the `weeknotes` tag already categorizes the post.
 
 **Important — Tags:** Always include "weeknotes" as the first tag, then add 2-6 additional contextually appropriate tags based on the content (3-7 tags total). Tags should reflect major themes, technologies, topics, or projects discussed in the post. Examples:
 - Technical topics: `ai`, `javascript`, `golang`, `docker`, `apis`
@@ -422,13 +426,13 @@ You can compute this two ways:
    python3 -c "from datetime import datetime as d; t=d.strptime('2026-05-20','%Y-%m-%d'); s=t.strftime('%Y-%m-%d'); w=t.isocalendar()[1]; print(f'content/posts/{t.year}/{s}-w{w:02d}/index.md')"
    ```
 
-2. **Via the helper script:** The skill includes `scripts/calculate-week.py` (located inside this skill's directory, not in the blog directory). If you know the skill's install path, you can invoke it with `--json` to get all path components at once. Use this when you also want the human-readable title string:
+2. **Via the helper script:** The skill includes `scripts/calculate-week.py` (located inside this skill's directory, not in the blog directory). If you know the skill's install path, you can invoke it with `--json` to get all path components at once:
    ```bash
    /path/to/weeknotes-composer/scripts/calculate-week.py --date 2026-05-20 --json
    ```
-   Output includes `slug`, `directory`, `filename`, and `title` fields.
+   Output includes `slug`, `directory`, `filename`, `week_marker`, and `title` fields. Use `week_marker` (e.g. `(Week 21)`) as the suffix on your content-derived title; `title` is only the bare `{year} Week {week}` fallback for grab-bag weeks (see the Title Format guidance in Step 7).
 
-Use whichever method is more convenient. The inline form works from any directory; the script gives the title for the frontmatter as a bonus.
+Use whichever method is more convenient. The inline form works from any directory; the script gives the week marker and the fallback title as a bonus.
 
 The path uses **today's date** (not the start date) for the publication date. Examples:
 - `content/posts/2025/2025-04-18-w16/index.md` (Week 16, published April 18, 2025)
@@ -471,7 +475,7 @@ Review the images already embedded in the post and select one to use as the cove
 
    ```yaml
    ---
-   title: "2026 Week 21"
+   title: "A masochist and his MacBook (Week 26)"
    date: YYYY-MM-DD
    thumbnail: "https://cdn.masto.host/.../selected-image.jpg"
    tags:

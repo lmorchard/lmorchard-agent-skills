@@ -34,8 +34,6 @@ did", writeups, anything blog-worthy.
 ```markdown
 ## <lowercase topic>
 
-*(blog candidate)*      ← include only when it's genuinely blog material
-
 - problem / context in one line
 - what was built + the stack, terse
 - the interesting bit — the gotcha, war story, or "aha" (this is the blog hook)
