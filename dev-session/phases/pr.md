@@ -34,6 +34,8 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
 
 4. **Re-check `origin/main` immediately before squashing.** `git fetch origin && git log --oneline main..origin/main`. Even if step 1 ran a few minutes ago, main may have advanced again — and a soft-reset-then-commit squash performed against a stale `origin/main` will silently include deletions of files that landed in between (e.g., a sibling PR merged). If new commits appear, redo the rebase + verification before squashing.
 
+   **Then read the full diffstat and account for every file.** `git diff origin/main..HEAD --stat` — not the tail, the whole list. A file you don't recognise is the finding, and large deletion counts on a feature branch are the tell: insertions are usually yours, deletions usually aren't. Generated and vendored artifacts (lockfiles, bundles, `*.generated.*`) are the usual culprits, because build and check steps rewrite them as a side effect and a broad `git add -A <dir>` sweeps them in. Note `git add <dir>` stages tracked modifications regardless of `-A`, so the narrower habit doesn't save you — prefer staging named paths. Restore anything unintended with `git checkout origin/main -- <path>` and amend before pushing.
+
 5. **Squash all commits** on the branch into one with a comprehensive message.
 
 6. **Push the branch** to remote.
