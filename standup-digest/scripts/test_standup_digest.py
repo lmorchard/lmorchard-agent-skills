@@ -62,6 +62,34 @@ def test_date_combined_with_since_is_rejected():
         sd.resolve_window(local(2026, 7, 29), date="2026-07-20", since="2026-07-01")
 
 
+def test_dst_transitions_do_not_shift_window_boundaries():
+    # Adding/subtracting whole days on an aware datetime keeps the old UTC
+    # offset unless re-truncated to local midnight, silently dropping or
+    # duplicating an hour across a DST transition. Verified against
+    # America/New_York, where DST ends 2026-11-01 and begins 2026-03-08.
+    old_tz = os.environ.get("TZ")
+    os.environ["TZ"] = "America/New_York"
+    time.tzset()
+    try:
+        # --date 2026-11-01 (the fall-back day) must cover the full local
+        # day, not end an hour early at 23:00 on the 1st.
+        w = sd.resolve_window(local(2026, 11, 1, 9, 16), date="2026-11-01")
+        assert w.since == local(2026, 11, 1)
+        assert w.until == local(2026, 11, 2)
+
+        # Monday 2026-03-09 (after the spring-forward on the 8th) sweeps
+        # back to Friday's local midnight, not an hour into Thursday.
+        w2 = sd.resolve_window(local(2026, 3, 9, 9, 16))
+        assert w2.since == local(2026, 3, 6)
+        assert w2.until == local(2026, 3, 9)
+    finally:
+        if old_tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = old_tz
+        time.tzset()
+
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 

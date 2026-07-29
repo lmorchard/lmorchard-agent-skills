@@ -41,6 +41,17 @@ def _midnight(moment: datetime) -> datetime:
     return moment.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def _shift_days(moment: datetime, days: int) -> datetime:
+    """Local midnight `days` away from `moment`, safe across DST transitions.
+
+    Adding/subtracting a `timedelta(days=n)` directly on an aware datetime
+    preserves the old UTC offset rather than recomputing it for the new
+    date, which silently shifts the boundary by an hour across a DST
+    transition. Landing at local noon first and re-truncating avoids that.
+    """
+    return _midnight(moment + timedelta(days=days, hours=12))
+
+
 def _parse_day(text: str) -> datetime:
     """Parse YYYY-MM-DD as local midnight."""
     return datetime.strptime(text, "%Y-%m-%d").astimezone()
@@ -57,11 +68,11 @@ def resolve_window(
 
     if date:
         start = _parse_day(date)
-        return Window(start, start + timedelta(days=1), "explicit")
+        return Window(start, _shift_days(start, 1), "explicit")
 
     if since or until:
         today = _midnight(now)
-        start = _parse_day(since) if since else today - timedelta(days=1)
+        start = _parse_day(since) if since else _shift_days(today, -1)
         end = _parse_day(until) if until else today
         if end <= start:
             raise ValueError("--until must be after --since")
@@ -69,7 +80,7 @@ def resolve_window(
 
     today = _midnight(now)
     back = 3 if today.weekday() == MONDAY else 1
-    return Window(today - timedelta(days=back), today, "previous-workday")
+    return Window(_shift_days(today, -back), today, "previous-workday")
 
 
 def is_session_transcript(path: Path) -> bool:
