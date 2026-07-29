@@ -521,6 +521,15 @@ def test_null_verifier_marks_everything_unavailable():
     assert v.commits("/tmp", None) == []
 
 
+def test_null_verifier_warns_that_verification_was_skipped():
+    # --no-verify must not look indistinguishable from a clean verified run:
+    # every ref comes back unavailable and zero commits are collected, so
+    # the degradation has to be announced through warnings or it's silent.
+    v = sd.NullVerifier()
+    assert v.warnings != []
+    assert "no-verify" in v.warnings[0]
+
+
 def test_null_verifier_repo_for_calls_nothing(monkeypatch):
     def boom(cmd, timeout=20):
         raise AssertionError(f"_run must not be called: {cmd}")
@@ -753,8 +762,8 @@ def test_build_digest_over_fixtures_no_verify():
     assert digest["window"]["rule"] == "explicit"
     assert digest["stats"]["malformed_lines"] == 1
     assert digest["stats"]["gh_calls"] == 0      # --no-verify makes no calls
-    assert isinstance(digest["warnings"], list)
-    assert isinstance(digest["commits"], list)
+    assert digest["warnings"], "a --no-verify run must announce degradation"
+    assert digest["commits"] == []               # NullVerifier never collects commits
 
 
 def test_build_digest_applies_verification_to_refs(monkeypatch):

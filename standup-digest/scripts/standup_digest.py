@@ -272,7 +272,9 @@ class NullVerifier:
     """Used by --no-verify and by tests. Touches nothing."""
 
     def __init__(self) -> None:
-        self.warnings: list[str] = []
+        self.warnings: list[str] = [
+            "verification skipped (--no-verify): refs unverified, commits not collected"
+        ]
         self.gh_calls = 0
 
     def verify_ref(self, ref: Ref) -> dict:
