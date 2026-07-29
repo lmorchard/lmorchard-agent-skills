@@ -52,7 +52,17 @@ Tests live beside the module so pytest's default `prepend` import mode puts the 
 Create `standup-digest/scripts/test_standup_digest.py`:
 
 ```python
+# Pin the suite's timezone before anything reads it. Fixture timestamps are
+# UTC, and windows are built from *local* midnight, so an unpinned TZ makes
+# tests pass in UTC and fail at UTC+10 and beyond (Sydney, Auckland).
+import os
+import time
+
+os.environ["TZ"] = "UTC"
+time.tzset()
+
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -245,9 +255,10 @@ Create `standup-digest/scripts/fixtures/sample-session.jsonl`. Hand-authored wit
 
 Append to `test_standup_digest.py`:
 
-```python
-from pathlib import Path
+`Path` is already imported in the Task 1 scaffold's header block; do not import it again
+mid-file.
 
+```python
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -291,6 +302,28 @@ def test_touches_window_matches_in_window_record():
     t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     assert sd.touches_window(t.records, window)
+
+
+def test_discover_transcripts_honours_the_one_level_contract(tmp_path):
+    uuid = "11111111-2222-3333-4444-555555555555"
+    other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    wanted = tmp_path / "project-a" / f"{uuid}.jsonl"
+    wanted.parent.mkdir(parents=True)
+    wanted.touch()
+
+    nested_subagent = tmp_path / "project-a" / uuid / "subagents" / f"{other}.jsonl"
+    nested_subagent.parent.mkdir(parents=True)
+    nested_subagent.touch()
+
+    not_a_uuid = tmp_path / "project-a" / "notes.jsonl"
+    not_a_uuid.touch()
+
+    too_deep = tmp_path / "project-b" / "nested" / f"{other}.jsonl"
+    too_deep.parent.mkdir(parents=True)
+    too_deep.touch()
+
+    assert sd.discover_transcripts(tmp_path) == [wanted]
 ```
 
 - [ ] **Step 3: Run tests to verify they fail**
