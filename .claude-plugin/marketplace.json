@@ -21,7 +21,8 @@
         "./dev-session",
         "./send-notification",
         "./journal-note",
-        "./television-companion"
+        "./television-companion",
+        "./standup-digest"
       ]
     }
   ]
