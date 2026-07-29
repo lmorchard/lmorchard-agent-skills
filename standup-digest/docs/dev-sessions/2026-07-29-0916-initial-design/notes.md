@@ -329,3 +329,33 @@ This task's commits:
 - `notes.md` (this file).
 
 `make test` — 60 passed, 0 failed, after the fix.
+
+## Spec corrections
+
+Recorded during the final pre-merge review pass, for a future reader who diffs the code
+against `spec.md` and is tempted to "fix" it back to match. These are deliberate,
+correct divergences, not drift to reconcile:
+
+- **`gh` field list differs per noun.** `spec.md:161-162` specifies one `--json` field
+  list for both `gh pr view` and `gh issue view`. The code (`GhVerifier.verify_ref`)
+  uses two different lists because `gh` rejects `mergedAt` for issues outright — issues
+  have no `merged_at` in the digest. Already noted above under "What the spec/plan got
+  wrong"; repeated here as it's the first of several places the spec's stated shape is
+  the wrong one to trust.
+- **`project` comes from `cwds[0]`, not the projects-directory name.** `spec.md:118`
+  says `project` is "the `~/.claude/projects/` directory name, decoded back to a path
+  and shortened relative to `~/devel`." `project_label` actually prefers the session's
+  recorded `cwd` when one exists, falling back to the directory name only when no `cwd`
+  was recorded. The directory name is lossy (worktrees, symlinks, and renamed checkouts
+  all encode to the same flattened form); the `cwd` is not.
+- **Fixtures are UUID-named because discovery requires it.** `spec.md`'s deliverables
+  list (`spec.md:313`) names `fixtures/sample-session.jsonl`. The actual fixtures are
+  named `11111111-2222-3333-4444-555555555555.jsonl` etc., because
+  `is_session_transcript` filters on the UUID filename pattern that real transcripts
+  use — a descriptively-named fixture would simply be filtered out by the code under
+  test.
+- **Sessions now carry `repo`**, which the spec's schema (`spec.md:199-223`) does not
+  list. Added in this review pass so `commits[]` (keyed by owner/name) can be joined to
+  a session's project at all — the schema's session object had no field in common with
+  a commit's `repo` key, so the two were unrelatable by construction. See the fix-wave
+  commits touching `distill_session` and `SKILL.md`'s field list.
