@@ -202,9 +202,41 @@ def test_strip_wrappers_removes_system_noise():
         "<local-command-caveat>blah</local-command-caveat>"
         "<system-reminder>nope</system-reminder>"
         "<command-name>/clear</command-name>"
+        "<task-notification><status>completed</status></task-notification>"
+        "<local-command-stdout>ok</local-command-stdout>"
         "real content"
     )
     assert sd.strip_wrappers(text) == "real content"
+
+
+def test_task_notification_record_yields_no_prompt():
+    # A record whose content is purely a harness-injected task-notification
+    # (e.g. "Background command ... completed") is a machine's completion
+    # claim, not a human prompt. It must strip to empty and be dropped
+    # entirely -- not counted in prompt_count -- rather than leaking an
+    # unverified "completed" claim into the one channel with no
+    # verification gate.
+    records = [
+        {
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-28T14:00:00.000Z",
+            "message": {
+                "role": "user",
+                "content": (
+                    "<task-notification><status>completed</status>"
+                    '<summary>Background command "foo" completed</summary>'
+                    "</task-notification>"
+                ),
+            },
+        }
+    ]
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+
+    prompts, dropped = sd.extract_prompts(records, window)
+
+    assert prompts == []
+    assert dropped == 0
 
 
 def test_extract_prompts_keeps_only_human_mainline_text():

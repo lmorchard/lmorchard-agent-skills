@@ -149,7 +149,8 @@ PROMPT_CHAR_LIMIT = 1500
 TRUNCATION_MARKER = "… [truncated]"
 
 _WRAPPER_RE = re.compile(
-    r"<(local-command-caveat|system-reminder|command-name|command-message|command-args)>"
+    r"<(local-command-caveat|system-reminder|command-name|command-message|command-args"
+    r"|task-notification|local-command-stdout)>"
     r".*?</\1>",
     re.DOTALL,
 )
