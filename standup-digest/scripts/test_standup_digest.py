@@ -415,8 +415,13 @@ def test_dedupe_keeps_distinct_repos_and_kinds():
     assert len(sd.dedupe_refs(refs)) == 3
 
 
-def test_version_numbers_are_not_mistaken_for_refs():
-    refs = sd.extract_refs([], ["bump to v2.1.220 and #  spaced"], default_repo="a/b")
+def test_bare_hash_preceded_by_word_char_or_slash_is_dropped():
+    # The (?<![\w/#]) lookbehind exists to reject a "#123" that's actually
+    # part of something else -- immediately glued to a word character (a
+    # build tag like "build123#45") or a path/URL fragment separator
+    # ("path/#46") -- not a standalone issue reference. Without the
+    # lookbehind, #(\d+)\b alone would happily match both.
+    refs = sd.extract_refs([], ["build123#45 and path/#46"], default_repo="a/b")
     assert refs == []
 
 
