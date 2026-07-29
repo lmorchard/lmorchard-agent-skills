@@ -321,8 +321,64 @@ def test_version_numbers_are_not_mistaken_for_refs():
     assert refs == []
 
 
-def test_distill_session_includes_pr_link_ref():
+def test_repo_from_cwd_parses_ssh_remote(monkeypatch):
+    monkeypatch.setattr(
+        sd, "_run", lambda cmd, timeout=20: "git@github.com:mozilla/pilo.git\n"
+    )
+    assert sd.repo_from_cwd("/anywhere") == "mozilla/pilo"
+
+
+def test_repo_from_cwd_parses_https_remote_with_git_suffix(monkeypatch):
+    monkeypatch.setattr(
+        sd, "_run", lambda cmd, timeout=20: "https://github.com/mozilla/pilo.git"
+    )
+    assert sd.repo_from_cwd("/anywhere") == "mozilla/pilo"
+
+
+def test_repo_from_cwd_parses_https_remote_without_git_suffix(monkeypatch):
+    monkeypatch.setattr(
+        sd, "_run", lambda cmd, timeout=20: "https://github.com/mozilla/pilo\n"
+    )
+    assert sd.repo_from_cwd("/anywhere") == "mozilla/pilo"
+
+
+def test_repo_from_cwd_returns_none_for_non_github_remote(monkeypatch):
+    monkeypatch.setattr(
+        sd, "_run", lambda cmd, timeout=20: "git@gitlab.com:foo/bar.git\n"
+    )
+    assert sd.repo_from_cwd("/anywhere") is None
+
+
+def test_repo_from_cwd_returns_none_when_run_fails(monkeypatch):
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
+    assert sd.repo_from_cwd("/anywhere") is None
+
+
+def test_distill_session_includes_pr_link_ref_and_drops_ambiguous_bare_hash(
+    monkeypatch,
+):
+    # No resolvable origin remote: default_repo is None, so the fixture's
+    # bare "#97" prose reference is ambiguous and must be dropped, while the
+    # pr-link record (which carries its own repo) survives.
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
     t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     refs = sd.distill_session(t, window)["refs"]
     assert any(r["number"] == 446 and r["source"] == "pr-link" for r in refs)
+    assert not any(r["number"] == 97 for r in refs)
+
+
+def test_distill_session_attaches_bare_hash_to_resolved_repo(monkeypatch):
+    # With an origin remote resolvable, the bare "#97" is no longer
+    # ambiguous and is attached to that repo as an issue.
+    monkeypatch.setattr(
+        sd, "_run", lambda cmd, timeout=20: "git@github.com:mozilla/pilo.git\n"
+    )
+    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    refs = sd.distill_session(t, window)["refs"]
+    assert any(
+        r["number"] == 97 and r["kind"] == "issue"
+        and r["repo"] == "mozilla/pilo" and r["source"] == "prose"
+        for r in refs
+    )
