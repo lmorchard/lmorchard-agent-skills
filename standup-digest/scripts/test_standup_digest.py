@@ -840,6 +840,67 @@ def test_build_digest_applies_verification_to_refs(monkeypatch):
     assert any(r["state"] == "MERGED" for r in refs)
 
 
+DIGEST_TOP_LEVEL_KEYS = {
+    "schema_version", "generated_at", "window", "stats", "warnings",
+    "sessions", "commits",
+}
+SESSION_KEYS = {
+    "session_id", "transcript", "title", "project", "cwds", "repo",
+    "branches", "launch", "started_at", "ended_at", "prompt_count",
+    "prompt_chars_dropped", "prompts", "refs",
+}
+REF_KEYS = {
+    "kind", "repo", "number", "source", "url", "verification",
+    "state", "title", "merged_at", "closed_at",
+}
+COMMIT_KEYS = {"repo", "path", "sha", "subject", "committed_at"}
+
+
+def test_digest_matches_documented_schema(monkeypatch):
+    """Locks the exact key sets SKILL.md enumerates as the digest contract.
+
+    spec.md promises a test that "asserts the digest validates against the
+    schema"; nothing did. Renaming a key (e.g. merged_at -> mergedAt) would
+    silently break the renderer while every other test kept passing.
+    """
+
+    def fake_run(cmd, timeout=20):
+        if cmd[0] == "gh":
+            return json.dumps({
+                "state": "MERGED",
+                "title": "t",
+                "url": "https://github.com/mozilla/pilo/pull/446",
+                "mergedAt": "2026-07-28T18:22:11Z",
+                "closedAt": "2026-07-28T18:22:11Z",
+            })
+        if "rev-parse" in cmd:
+            return "/Users/lorchard/devel/tabs-project/pilo/.git"
+        if "remote" in cmd:
+            return "git@github.com:mozilla/pilo.git"
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "log" in cmd:
+            return "abc1234\x1ffix: something\x1f2026-07-28T14:02:11-04:00"
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    digest = sd.build_digest(FIXTURES.parent, window, sd.GhVerifier())
+
+    assert set(digest.keys()) == DIGEST_TOP_LEVEL_KEYS
+
+    assert digest["sessions"], "fixtures should yield at least one session"
+    for session in digest["sessions"]:
+        assert set(session.keys()) == SESSION_KEYS
+        for ref in session["refs"]:
+            assert set(ref.keys()) == REF_KEYS
+            assert ref["verification"] in {"confirmed", "unavailable"}
+
+    assert digest["commits"], "fixtures should yield at least one commit"
+    for commit in digest["commits"]:
+        assert set(commit.keys()) == COMMIT_KEYS
+
+
 def test_empty_window_yields_valid_digest():
     window = sd.resolve_window(local(2026, 7, 29), date="1999-01-01")
     digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
