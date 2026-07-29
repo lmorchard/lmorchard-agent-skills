@@ -785,9 +785,24 @@ Expected: FAIL — `AttributeError: module 'standup_digest' has no attribute 'ex
 Add to `standup_digest.py`:
 
 ```python
+import subprocess
+
 _GH_URL_RE = re.compile(
     r"https?://github\.com/([\w.-]+/[\w.-]+)/(pull|issues)/(\d+)"
 )
+
+
+def _run(cmd: list[str], timeout: int = 20) -> str | None:
+    """Run a command, returning stdout, or None on any failure."""
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
 _BARE_REF_RE = re.compile(r"(?<![\w/#])#(\d+)\b")
 
 
@@ -869,14 +884,8 @@ def dedupe_refs(refs: list[Ref]) -> list[Ref]:
     return sorted(best.values(), key=lambda r: (r.repo or "", r.kind, r.number))
 ```
 
-`_run` is defined in Task 5. Until then `repo_from_cwd` is unused by any test, so
-add this placeholder at the top of the file and replace it in Task 5:
-
-```python
-def _run(cmd: list[str], timeout: int = 20) -> str | None:
-    """Replaced with the real subprocess implementation in Task 5."""
-    return None
-```
+`_run` is the single seam every `git`/`gh` call goes through. Tests monkeypatch it rather
+than the subprocess module, which is why it is a module-level function and not a method.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -925,8 +934,8 @@ git commit -m "standup-digest: PR and issue reference extraction with dedup"
 - Modify: `standup-digest/scripts/test_standup_digest.py`
 
 **Interfaces:**
-- Consumes: `Ref`, `Window`.
-- Produces: `_run(cmd: list[str], timeout: int = 20) -> str | None`, `NullVerifier`, `GhVerifier`, both exposing `verify_ref(ref: Ref) -> dict` and `commits(cwd: str, window: Window) -> list[dict]` and carrying a `warnings: list[str]` attribute.
+- Consumes: `Ref`, `Window`, `_run`, `repo_from_cwd` from Task 4.
+- Produces: `NullVerifier`, `GhVerifier`, both exposing `verify_ref(ref: Ref) -> dict` and `commits(cwd: str, window: Window) -> list[dict]` and carrying `warnings: list[str]` and `gh_calls: int` attributes.
 
 `verify_ref` returns a dict merged onto the serialized ref: `{"verification": "confirmed"|"unavailable", "state": str|None, "title": str|None, "url": str|None, "merged_at": str|None, "closed_at": str|None}`.
 
@@ -1029,28 +1038,12 @@ def test_commits_parses_git_log(monkeypatch):
 Run: `make test`
 Expected: FAIL — `AttributeError: module 'standup_digest' has no attribute 'NullVerifier'`
 
-- [ ] **Step 3: Replace the `_run` placeholder and add the verifiers**
+- [ ] **Step 3: Add the verifiers**
 
-Replace the Task 4 placeholder `_run` with the real one, and add the verifiers:
+`_run` already exists from Task 4. Add below it:
 
 ```python
-import subprocess
-
 GIT_LOG_SEP = "\x1f"
-
-
-def _run(cmd: list[str], timeout: int = 20) -> str | None:
-    """Run a command, returning stdout, or None on any failure."""
-    try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout
-
 
 _UNVERIFIED = {
     "verification": "unavailable",
