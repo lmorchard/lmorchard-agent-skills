@@ -506,6 +506,7 @@ def distill_session(transcript: Transcript, window: Window, verifier) -> dict:
         "title": titles[-1] if titles else None,
         "project": project_label(transcript.path.parent.name, cwds),
         "cwds": cwds,
+        "repo": default_repo,
         "branches": _distinct(r.get("gitBranch") for r in records),
         "launch": infer_launch(all_prompts),
         "started_at": moments[0].astimezone().isoformat() if moments else None,

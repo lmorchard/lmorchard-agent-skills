@@ -488,6 +488,30 @@ def test_distill_session_attaches_bare_hash_to_resolved_repo(monkeypatch):
     )
 
 
+def test_distill_session_carries_resolved_repo(monkeypatch):
+    # commits[] is keyed by the session's cwd's resolved origin remote
+    # (owner/name); a session must carry that same value as `repo` so a
+    # renderer can actually join commits to the project they belong to.
+    monkeypatch.setattr(
+        sd, "_run", lambda cmd, timeout=20: "git@github.com:mozilla/pilo.git\n"
+    )
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+
+    got = sd.distill_session(t, window, sd.GhVerifier())
+
+    assert got["repo"] == "mozilla/pilo"
+
+
+def test_distill_session_repo_is_none_without_resolvable_remote():
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+
+    got = sd.distill_session(t, window, sd.NullVerifier())
+
+    assert got["repo"] is None
+
+
 def test_null_verifier_marks_everything_unavailable():
     v = sd.NullVerifier()
     ref = sd.Ref(kind="pr", repo="a/b", number=1, source="prose", url=None)
