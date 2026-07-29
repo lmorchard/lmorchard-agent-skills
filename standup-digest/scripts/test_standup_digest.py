@@ -153,6 +153,7 @@ def test_extract_prompts_keeps_only_human_mainline_text():
     assert "sidechain prompt" not in joined      # isSidechain
     assert "meta prompt" not in joined           # isMeta
     assert "tool_result" not in joined           # block-list tool payloads
+    assert "LEAKED_TOOL_PAYLOAD" not in joined   # tool_result block's own "text" key
     assert "outside the window" not in joined    # out of window
     assert "ignore me" not in joined             # stripped wrapper
 
@@ -209,7 +210,7 @@ def test_distill_session_collects_metadata():
     assert got["session_id"] == "11111111-2222-3333-4444-555555555555"
     assert got["launch"] == "human"
     assert got["prompt_count"] == 2
-    assert got["branches"] == ["feat/pet", "main"]
+    assert got["branches"] == ["main", "feat/pet"]
     assert got["started_at"].startswith("2026-07-28T")
     # ended_at must be the last in-window record, not the 07-30 one
     assert got["ended_at"].startswith("2026-07-28T")
@@ -219,3 +220,36 @@ def test_distill_session_marks_driver_launch():
     t = sd.read_transcript(FIXTURES / "driver-session.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     assert sd.distill_session(t, window)["launch"] == "driver"
+
+
+def test_distill_session_attributes_launch_from_whole_transcript():
+    # The driver preamble lands the day before the report window (this session
+    # spans multiple days). Launch attribution must look at the whole
+    # transcript, not just the window being reported on, or a later window
+    # would misattribute a driver-launched session as human-launched.
+    session_id = "22222222-3333-4444-5555-666666666666"
+    records = [
+        {
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-27T09:00:00.000Z",
+            "sessionId": session_id,
+            "message": {
+                "role": "user",
+                "content": "You are running unattended, invoked by the board-driver.",
+            },
+        },
+        {
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-28T14:00:00.000Z",
+            "sessionId": session_id,
+            "message": {"role": "user", "content": "continue the work"},
+        },
+    ]
+    t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    got = sd.distill_session(t, window)
+
+    assert got["launch"] == "driver"
+    assert got["prompt_count"] == 1  # the windowed prompt list is unaffected

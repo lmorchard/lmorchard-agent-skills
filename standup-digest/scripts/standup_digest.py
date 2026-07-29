@@ -162,8 +162,15 @@ def _prompt_text(rec: dict) -> str:
     return ""
 
 
-def extract_prompts(records: list[dict], window: Window) -> tuple[list[str], int]:
-    """In-window human prompts, truncated, with dropped chars counted."""
+def extract_prompts(
+    records: list[dict], window: Window | None = None
+) -> tuple[list[str], int]:
+    """Human prompts, truncated, with dropped chars counted.
+
+    With a window, only in-window prompts are kept. Without one, every
+    mainline human prompt in the transcript is kept — used for launch
+    attribution, which must not depend on which report window is being run.
+    """
     prompts: list[str] = []
     dropped = 0
     for rec in records:
@@ -171,9 +178,10 @@ def extract_prompts(records: list[dict], window: Window) -> tuple[list[str], int
             continue
         if not _is_mainline(rec):
             continue
-        moment = record_timestamp(rec)
-        if moment is None or not (window.since <= moment < window.until):
-            continue
+        if window is not None:
+            moment = record_timestamp(rec)
+            if moment is None or not (window.since <= moment < window.until):
+                continue
         text = _prompt_text(rec)
         if not text:
             continue
@@ -210,7 +218,7 @@ def project_label(dirname: str, cwds: list[str] | None = None) -> str:
 
 
 def _distinct(values) -> list[str]:
-    return sorted({v for v in values if v})
+    return list(dict.fromkeys(v for v in values if v))
 
 
 def distill_session(transcript: Transcript, window: Window) -> dict:
@@ -225,6 +233,7 @@ def distill_session(transcript: Transcript, window: Window) -> dict:
     ]
     moments = sorted(m for rec in in_window if (m := record_timestamp(rec)))
     prompts, dropped = extract_prompts(records, window)
+    all_prompts, _ = extract_prompts(records)  # unwindowed, for launch attribution
 
     titles = [r.get("aiTitle") for r in records if r.get("type") == "ai-title"]
     session_ids = [r.get("sessionId") for r in records if r.get("sessionId")]
@@ -237,7 +246,7 @@ def distill_session(transcript: Transcript, window: Window) -> dict:
         "project": project_label(transcript.path.parent.name, cwds),
         "cwds": cwds,
         "branches": _distinct(r.get("gitBranch") for r in records),
-        "launch": infer_launch(prompts),
+        "launch": infer_launch(all_prompts),
         "started_at": moments[0].astimezone().isoformat() if moments else None,
         "ended_at": moments[-1].astimezone().isoformat() if moments else None,
         "prompt_count": len(prompts),
