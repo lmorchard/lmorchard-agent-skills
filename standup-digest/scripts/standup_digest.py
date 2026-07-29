@@ -6,9 +6,11 @@ Standard library only. Shells out to `git` and `gh`, imports neither.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -264,6 +266,9 @@ class NullVerifier:
     def commits(self, cwd: str, window: Window) -> list[dict]:
         return []
 
+    def repo_for(self, cwd: str) -> str | None:
+        return None
+
 
 class GhVerifier:
     """Checks claims against real git and gh state."""
@@ -273,6 +278,13 @@ class GhVerifier:
         self.gh_calls = 0
         self._ref_cache: dict[tuple, dict] = {}
         self._emails: dict[str, str] = {}
+        self._repos: dict[str, str | None] = {}
+
+    def repo_for(self, cwd: str) -> str | None:
+        """owner/name for `cwd`'s origin remote, cached per cwd."""
+        if cwd not in self._repos:
+            self._repos[cwd] = repo_from_cwd(cwd)
+        return self._repos[cwd]
 
     def verify_ref(self, ref: Ref) -> dict:
         if not ref.repo:
@@ -452,7 +464,7 @@ def dedupe_refs(refs: list[Ref]) -> list[Ref]:
     return sorted(best.values(), key=lambda r: (r.repo or "", r.kind, r.number))
 
 
-def distill_session(transcript: Transcript, window: Window) -> dict:
+def distill_session(transcript: Transcript, window: Window, verifier) -> dict:
     """Neutral facts about one session. No editorial judgment."""
     records = transcript.records
     in_window = [
@@ -470,7 +482,7 @@ def distill_session(transcript: Transcript, window: Window) -> dict:
     session_ids = [r.get("sessionId") for r in records if r.get("sessionId")]
     cwds = _distinct(r.get("cwd") for r in records)
 
-    default_repo = repo_from_cwd(cwds[0]) if cwds else None
+    default_repo = verifier.repo_for(cwds[0]) if cwds else None
     refs = extract_refs(records, prompts, default_repo)
 
     return {
@@ -488,3 +500,114 @@ def distill_session(transcript: Transcript, window: Window) -> dict:
         "prompts": prompts,
         "refs": [vars(r) for r in refs],
     }
+
+
+SCHEMA_VERSION = 1
+DEFAULT_ROOT = Path.home() / ".claude" / "projects"
+
+
+def build_digest(root: Path, window: Window, verifier) -> dict:
+    sessions: list[dict] = []
+    malformed = 0
+    dropped = 0
+    warnings: list[str] = []
+
+    for path in discover_transcripts(root):
+        try:
+            transcript = read_transcript(path)
+        except OSError as err:
+            warnings.append(f"unreadable transcript {path}: {err}")
+            continue
+
+        malformed += transcript.malformed
+        if not touches_window(transcript.records, window):
+            continue
+
+        session = distill_session(transcript, window, verifier)
+        dropped += session["prompt_chars_dropped"]
+
+        for ref in session["refs"]:
+            ref.update(
+                verifier.verify_ref(
+                    Ref(
+                        kind=ref["kind"], repo=ref["repo"], number=ref["number"],
+                        source=ref["source"], url=ref["url"],
+                    )
+                )
+            )
+        sessions.append(session)
+
+    commits: list[dict] = []
+    seen_paths: set[str] = set()
+    seen_shas: set[str] = set()
+    for session in sessions:
+        for cwd in session["cwds"]:
+            if cwd in seen_paths:
+                continue
+            seen_paths.add(cwd)
+            for commit in verifier.commits(cwd, window):
+                if commit["sha"] in seen_shas:
+                    continue
+                seen_shas.add(commit["sha"])
+                commits.append(commit)
+
+    warnings.extend(verifier.warnings)
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at": datetime.now().astimezone().isoformat(),
+        "window": {
+            "since": window.since.isoformat(),
+            "until": window.until.isoformat(),
+            "rule": window.rule,
+        },
+        "stats": {
+            "sessions": len(sessions),
+            "projects": len({s["project"] for s in sessions}),
+            "malformed_lines": malformed,
+            "prompt_chars_dropped": dropped,
+            "gh_calls": verifier.gh_calls,
+        },
+        "warnings": warnings,
+        "sessions": sessions,
+        "commits": commits,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Emit a structured digest of recent Claude Code sessions."
+    )
+    parser.add_argument("--date", help="a single calendar day, YYYY-MM-DD")
+    parser.add_argument("--since", help="window start, YYYY-MM-DD")
+    parser.add_argument("--until", help="window end (exclusive), YYYY-MM-DD")
+    parser.add_argument("--no-verify", action="store_true", help="skip git and gh")
+    parser.add_argument("--root", default=str(DEFAULT_ROOT), help="projects directory")
+    parser.add_argument("--out", help="write JSON here instead of stdout")
+    args = parser.parse_args(argv)
+
+    try:
+        window = resolve_window(
+            datetime.now().astimezone(), args.date, args.since, args.until
+        )
+    except ValueError as err:
+        print(f"error: {err}", file=sys.stderr)
+        return 2
+
+    verifier = NullVerifier() if args.no_verify else GhVerifier()
+    digest = build_digest(Path(args.root), window, verifier)
+    payload = json.dumps(digest, indent=2, ensure_ascii=False)
+
+    if args.out:
+        try:
+            Path(args.out).write_text(payload, encoding="utf-8")
+        except OSError as err:
+            print(f"error: cannot write {args.out}: {err}", file=sys.stderr)
+            return 1
+    else:
+        print(payload)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

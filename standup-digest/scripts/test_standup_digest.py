@@ -77,7 +77,7 @@ def test_subagent_paths_are_excluded():
 
 
 def test_read_transcript_counts_malformed_lines():
-    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
     assert t.malformed == 1          # the deliberate truncated final line
     assert len(t.records) == 10
 
@@ -102,7 +102,7 @@ def test_touches_window_ignores_sidechain_records():
 
 
 def test_touches_window_matches_in_window_record():
-    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     assert sd.touches_window(t.records, window)
 
@@ -142,7 +142,7 @@ def test_strip_wrappers_removes_system_noise():
 
 
 def test_extract_prompts_keeps_only_human_mainline_text():
-    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     prompts, dropped = sd.extract_prompts(t.records, window)
 
@@ -203,9 +203,9 @@ def test_project_label_falls_back_to_dirname():
 
 
 def test_distill_session_collects_metadata():
-    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    got = sd.distill_session(t, window)
+    got = sd.distill_session(t, window, sd.NullVerifier())
 
     assert got["title"] == "Evaluate and refresh stale PR 446"
     assert got["session_id"] == "11111111-2222-3333-4444-555555555555"
@@ -218,9 +218,9 @@ def test_distill_session_collects_metadata():
 
 
 def test_distill_session_marks_driver_launch():
-    t = sd.read_transcript(FIXTURES / "driver-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "99999999-8888-7777-6666-555555555555.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    assert sd.distill_session(t, window)["launch"] == "driver"
+    assert sd.distill_session(t, window, sd.NullVerifier())["launch"] == "driver"
 
 
 def test_distill_session_attributes_launch_from_whole_transcript():
@@ -250,7 +250,7 @@ def test_distill_session_attributes_launch_from_whole_transcript():
     ]
     t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    got = sd.distill_session(t, window)
+    got = sd.distill_session(t, window, sd.NullVerifier())
 
     assert got["launch"] == "driver"
     assert got["prompt_count"] == 1  # the windowed prompt list is unaffected
@@ -362,9 +362,9 @@ def test_distill_session_includes_pr_link_ref_and_drops_ambiguous_bare_hash(
     # bare "#97" prose reference is ambiguous and must be dropped, while the
     # pr-link record (which carries its own repo) survives.
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
-    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    refs = sd.distill_session(t, window)["refs"]
+    refs = sd.distill_session(t, window, sd.GhVerifier())["refs"]
     assert any(r["number"] == 446 and r["source"] == "pr-link" for r in refs)
     assert not any(r["number"] == 97 for r in refs)
 
@@ -375,9 +375,9 @@ def test_distill_session_attaches_bare_hash_to_resolved_repo(monkeypatch):
     monkeypatch.setattr(
         sd, "_run", lambda cmd, timeout=20: "git@github.com:mozilla/pilo.git\n"
     )
-    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    refs = sd.distill_session(t, window)["refs"]
+    refs = sd.distill_session(t, window, sd.GhVerifier())["refs"]
     assert any(
         r["number"] == 97 and r["kind"] == "issue"
         and r["repo"] == "mozilla/pilo" and r["source"] == "prose"
@@ -392,6 +392,28 @@ def test_null_verifier_marks_everything_unavailable():
     assert got["verification"] == "unavailable"
     assert got["state"] is None
     assert v.commits("/tmp", None) == []
+
+
+def test_null_verifier_repo_for_calls_nothing(monkeypatch):
+    def boom(cmd, timeout=20):
+        raise AssertionError(f"_run must not be called: {cmd}")
+
+    monkeypatch.setattr(sd, "_run", boom)
+    assert sd.NullVerifier().repo_for("/anywhere") is None
+
+
+def test_gh_verifier_repo_for_delegates_and_caches(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, timeout=20):
+        calls.append(cmd)
+        return "git@github.com:mozilla/pilo.git\n"
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    v = sd.GhVerifier()
+    assert v.repo_for("/repo") == "mozilla/pilo"
+    assert v.repo_for("/repo") == "mozilla/pilo"
+    assert len(calls) == 1   # cached by cwd on repeat lookups
 
 
 def test_gh_verifier_confirms_merged_pr(monkeypatch):
@@ -545,3 +567,78 @@ def test_commits_empty_log_is_not_a_warning(monkeypatch):
 
     assert got == []
     assert v.warnings == []
+
+
+def test_build_digest_over_fixtures_no_verify():
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
+
+    assert digest["schema_version"] == sd.SCHEMA_VERSION
+    assert digest["window"]["rule"] == "explicit"
+    assert digest["stats"]["malformed_lines"] == 1
+    assert digest["stats"]["gh_calls"] == 0      # --no-verify makes no calls
+    assert isinstance(digest["warnings"], list)
+    assert isinstance(digest["commits"], list)
+
+
+def test_build_digest_applies_verification_to_refs(monkeypatch):
+    payload = {"state": "MERGED", "title": "t", "url": "u", "mergedAt": "2026-07-28T18:22:11Z"}
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: json.dumps(payload))
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    digest = sd.build_digest(FIXTURES.parent, window, sd.GhVerifier())
+
+    refs = [r for s in digest["sessions"] for r in s["refs"]]
+    assert refs, "fixture should yield at least one ref"
+    assert all(r["verification"] == "confirmed" for r in refs)
+    assert any(r["state"] == "MERGED" for r in refs)
+
+
+def test_empty_window_yields_valid_digest():
+    window = sd.resolve_window(local(2026, 7, 29), date="1999-01-01")
+    digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
+    assert digest["sessions"] == []
+    assert digest["stats"]["sessions"] == 0
+
+
+def test_main_writes_json_to_out(tmp_path, monkeypatch):
+    out = tmp_path / "digest.json"
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
+    code = sd.main(
+        [
+            "--date", "2026-07-28",
+            "--no-verify",
+            "--root", str(FIXTURES.parent),
+            "--out", str(out),
+        ]
+    )
+    assert code == 0
+    loaded = json.loads(out.read_text())
+    assert loaded["schema_version"] == sd.SCHEMA_VERSION
+
+
+def test_main_rejects_conflicting_window_flags(capsys):
+    code = sd.main(["--date", "2026-07-28", "--since", "2026-07-01", "--no-verify"])
+    assert code == 2
+
+
+def test_main_reports_unwritable_out(tmp_path):
+    bad = tmp_path / "missing-dir" / "digest.json"
+    code = sd.main(["--no-verify", "--root", str(FIXTURES.parent), "--out", str(bad)])
+    assert code == 1
+
+
+def test_no_verify_never_touches_subprocess(monkeypatch):
+    """--no-verify must make zero subprocess calls, full stop.
+
+    This is the whole point of routing all repo/commit/ref resolution
+    through the verifier: NullVerifier must never let a `git`/`gh` call
+    escape, even indirectly via a helper distill_session calls itself.
+    """
+
+    def boom(cmd, timeout=20):
+        raise AssertionError(f"_run must not be called under --no-verify: {cmd}")
+
+    monkeypatch.setattr(sd, "_run", boom)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
+    assert digest["schema_version"] == sd.SCHEMA_VERSION
