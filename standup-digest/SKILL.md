@@ -63,10 +63,10 @@ Further binding rules:
 - Anything absent from the digest never appears as an accomplishment.
 - Sessions with `launch: "driver"` were kicked off or delegated, not hand-worked. Say so.
 - Sessions with `launch: "unknown"` get neutral phrasing — describe what happened
-  (files touched, refs, commits) without characterizing *how* the session started.
-  Do not call it hand-worked and do not call it delegated; "unknown" means the
-  transcript had no human prompts to judge from, not that the answer is ambiguous
-  between the two.
+  (the repos and branches involved, plus any refs and commits) without
+  characterizing *how* the session started. Do not call it hand-worked and do not
+  call it delegated; "unknown" means the transcript had no human prompts to judge
+  from, not that the answer is ambiguous between the two.
 - When `warnings` is non-empty, add one short line saying the run was degraded. A
   partial digest must never read as a clean one.
 - `refs` with `source: "prose"` are the looser signal — Les may have only mentioned a
