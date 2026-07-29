@@ -681,10 +681,17 @@ def test_commits_parses_git_log(monkeypatch):
     assert got[0]["repo"] == "mozilla/pilo"
 
 
-def test_commits_scopes_author_email_per_repo(monkeypatch):
+def test_commits_scopes_author_email_per_repo(tmp_path, monkeypatch):
     # Transcripts span both work and personal repos, each with its own
     # locally-configured user.email. The lookup must be scoped to the repo
     # being scanned, not read from ambient cwd and reused for every repo.
+    # Real directories: `commits` now checks cwd existence before shelling
+    # out, so a fake path would short-circuit before ever calling fake_run.
+    work = tmp_path / "work"
+    personal = tmp_path / "personal"
+    work.mkdir()
+    personal.mkdir()
+
     config_calls = []
     log_cmds = []
 
@@ -695,7 +702,7 @@ def test_commits_scopes_author_email_per_repo(monkeypatch):
         if "config" in cmd:
             config_calls.append(cmd)
             repo_dir = cmd[cmd.index("-C") + 1]
-            return "work@mozilla.com" if repo_dir == "/repo/work" else "personal@example.com"
+            return "work@mozilla.com" if repo_dir == str(work) else "personal@example.com"
         if "log" in cmd:
             log_cmds.append(cmd)
             return ""
@@ -705,20 +712,23 @@ def test_commits_scopes_author_email_per_repo(monkeypatch):
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     v = sd.GhVerifier()
 
-    v.commits("/repo/work", window)
-    v.commits("/repo/personal", window)
-    v.commits("/repo/work", window)  # repeat: must hit the per-repo cache
+    v.commits(str(work), window)
+    v.commits(str(personal), window)
+    v.commits(str(work), window)  # repeat: must hit the full per-repo commits cache
 
     assert len(config_calls) == 2   # one lookup per distinct repo, not per call
+    assert len(log_cmds) == 2       # git log deduped by repo_root, not re-run on repeat
     assert "--author=work@mozilla.com" in log_cmds[0]
     assert "--author=personal@example.com" in log_cmds[1]
-    assert "--author=work@mozilla.com" in log_cmds[2]
 
 
-def test_commits_warns_when_git_log_fails(monkeypatch):
+def test_commits_warns_when_git_log_fails(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
-            return "/repo/.git"
+            return f"{repo}/.git"
         if "config" in cmd:
             return "lorchard@mozilla.com"
         if "log" in cmd:
@@ -728,17 +738,20 @@ def test_commits_warns_when_git_log_fails(monkeypatch):
     monkeypatch.setattr(sd, "_run", fake_run)
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     v = sd.GhVerifier()
-    got = v.commits("/repo", window)
+    got = v.commits(str(repo), window)
 
     assert got == []
     assert len(v.warnings) == 1
     assert "git log failed" in v.warnings[0]
 
 
-def test_commits_empty_log_is_not_a_warning(monkeypatch):
+def test_commits_empty_log_is_not_a_warning(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
-            return "/repo/.git"
+            return f"{repo}/.git"
         if "config" in cmd:
             return "lorchard@mozilla.com"
         if "log" in cmd:
@@ -748,10 +761,59 @@ def test_commits_empty_log_is_not_a_warning(monkeypatch):
     monkeypatch.setattr(sd, "_run", fake_run)
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     v = sd.GhVerifier()
-    got = v.commits("/repo", window)
+    got = v.commits(str(repo), window)
 
     assert got == []
     assert v.warnings == []
+
+
+def test_commits_returns_empty_for_nonexistent_cwd(tmp_path, monkeypatch):
+    # A cleaned-up worktree cwd is not degradation: no warning, and no
+    # subprocess should even be attempted.
+    def boom(cmd, timeout=20):
+        raise AssertionError(f"_run must not be called for a nonexistent cwd: {cmd}")
+
+    monkeypatch.setattr(sd, "_run", boom)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    v = sd.GhVerifier()
+    missing = tmp_path / "gone"
+
+    got = v.commits(str(missing), window)
+
+    assert got == []
+    assert v.warnings == []
+
+
+def test_commits_dedupes_git_log_by_resolved_repo_root(tmp_path, monkeypatch):
+    # Two different cwds (e.g. two worktrees of the same repo) resolving to
+    # the same repo_root must trigger exactly one `git log` invocation, not
+    # one per cwd.
+    worktree_a = tmp_path / "worktree-a"
+    worktree_b = tmp_path / "worktree-b"
+    worktree_a.mkdir()
+    worktree_b.mkdir()
+    shared_repo_root = tmp_path / "shared-repo"
+
+    log_calls = []
+
+    def fake_run(cmd, timeout=20):
+        if "rev-parse" in cmd:
+            return f"{shared_repo_root}/.git"
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "log" in cmd:
+            log_calls.append(cmd)
+            return ""
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    v = sd.GhVerifier()
+
+    v.commits(str(worktree_a), window)
+    v.commits(str(worktree_b), window)
+
+    assert len(log_calls) == 1
 
 
 def test_build_digest_over_fixtures_no_verify():

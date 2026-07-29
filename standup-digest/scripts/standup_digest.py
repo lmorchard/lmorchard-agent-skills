@@ -296,6 +296,7 @@ class GhVerifier:
         self._ref_cache: dict[tuple, dict] = {}
         self._emails: dict[str, str] = {}
         self._repos: dict[str, str | None] = {}
+        self._commits_cache: dict[str, list[dict]] = {}
 
     def repo_for(self, cwd: str) -> str | None:
         """owner/name for `cwd`'s origin remote, cached per cwd."""
@@ -358,6 +359,12 @@ class GhVerifier:
 
     def commits(self, cwd: str, window: Window) -> list[dict]:
         """Les's commits in `cwd`'s repository inside the window."""
+        if not Path(cwd).exists():
+            # A cleaned-up worktree isn't degradation -- there's nothing to
+            # warn about, and the parent repo's commits are still collected
+            # via whichever other cwd points at it.
+            return []
+
         common = _run(
             ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]
         )
@@ -365,6 +372,9 @@ class GhVerifier:
             self.warnings.append(f"not a git repository, commits skipped: {cwd}")
             return []
         repo_root = str(Path(common.strip()).parent)
+
+        if repo_root in self._commits_cache:
+            return self._commits_cache[repo_root]
 
         email = self._author_email(repo_root)
         if not email:
@@ -383,8 +393,10 @@ class GhVerifier:
         out = _run(cmd)
         if out is None:
             self.warnings.append(f"git log failed, commits skipped: {repo_root}")
+            self._commits_cache[repo_root] = []
             return []
         if not out.strip():
+            self._commits_cache[repo_root] = []
             return []
 
         repo = repo_from_cwd(repo_root)
@@ -403,6 +415,7 @@ class GhVerifier:
                     "committed_at": committed,
                 }
             )
+        self._commits_cache[repo_root] = commits
         return commits
 
 
