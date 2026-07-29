@@ -121,6 +121,44 @@ def test_record_timestamp_missing_returns_none():
     assert sd.record_timestamp({"type": "mode"}) is None
 
 
+def test_record_timestamp_naive_is_treated_as_missing():
+    # datetime.fromisoformat happily parses a timestamp with no offset/zone
+    # into a naive datetime, which then can't be compared against the
+    # window's aware bounds -- must be treated as absent, not raise.
+    rec = {"timestamp": "2026-07-28 14:00:00"}
+    assert sd.record_timestamp(rec) is None
+
+
+def test_naive_timestamp_record_is_skipped_not_crashed():
+    # A single naive timestamp mixed into an otherwise-normal session must
+    # not abort the whole run with a TypeError; it's simply excluded, as if
+    # it had no timestamp at all.
+    session_id = "33333333-4444-5555-6666-777777777777"
+    records = [
+        {
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-28 14:00:00",  # naive
+            "sessionId": session_id,
+            "message": {"role": "user", "content": "naive timestamp prompt"},
+        },
+        {
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-28T15:00:00.000Z",
+            "sessionId": session_id,
+            "message": {"role": "user", "content": "valid prompt"},
+        },
+    ]
+    t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+
+    got = sd.distill_session(t, window, sd.NullVerifier())  # must not raise
+
+    assert got["prompt_count"] == 1
+    assert got["prompts"] == ["valid prompt"]
+
+
 def test_touches_window_ignores_sidechain_records():
     window = sd.Window(local(2026, 7, 30, 8), local(2026, 7, 30, 10), "explicit")
     only_sidechain = [

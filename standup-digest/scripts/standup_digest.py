@@ -116,23 +116,28 @@ def record_timestamp(rec: dict) -> datetime | None:
     if not isinstance(raw, str):
         return None
     try:
-        return datetime.fromisoformat(raw)
+        moment = datetime.fromisoformat(raw)
     except ValueError:
         return None
+    # A naive timestamp (no offset/zone) can't be compared against the
+    # window's aware bounds; treat it as absent rather than crash the run.
+    return moment if moment.tzinfo else None
 
 
 def _is_mainline(rec: dict) -> bool:
     return rec.get("isSidechain") is not True
 
 
+def _within(moment: datetime | None, window: Window) -> bool:
+    return moment is not None and window.since <= moment < window.until
+
+
+def _in_window(rec: dict, window: Window) -> bool:
+    return _is_mainline(rec) and _within(record_timestamp(rec), window)
+
+
 def touches_window(records: list[dict], window: Window) -> bool:
-    for rec in records:
-        if not _is_mainline(rec):
-            continue
-        moment = record_timestamp(rec)
-        if moment is not None and window.since <= moment < window.until:
-            return True
-    return False
+    return any(_in_window(rec, window) for rec in records)
 
 
 def discover_transcripts(root: Path) -> list[Path]:
@@ -192,10 +197,8 @@ def extract_prompts(
             continue
         if not _is_mainline(rec):
             continue
-        if window is not None:
-            moment = record_timestamp(rec)
-            if moment is None or not (window.since <= moment < window.until):
-                continue
+        if window is not None and not _within(record_timestamp(rec), window):
+            continue
         text = _prompt_text(rec)
         if not text:
             continue
@@ -484,13 +487,7 @@ def dedupe_refs(refs: list[Ref]) -> list[Ref]:
 def distill_session(transcript: Transcript, window: Window, verifier) -> dict:
     """Neutral facts about one session. No editorial judgment."""
     records = transcript.records
-    in_window = [
-        rec
-        for rec in records
-        if _is_mainline(rec)
-        and (moment := record_timestamp(rec)) is not None
-        and window.since <= moment < window.until
-    ]
+    in_window = [rec for rec in records if _in_window(rec, window)]
     moments = sorted(m for rec in in_window if (m := record_timestamp(rec)))
     prompts, dropped = extract_prompts(records, window)
     all_prompts, _ = extract_prompts(records)  # unwindowed, for launch attribution
