@@ -1,4 +1,11 @@
+import os
+import time
+
+os.environ["TZ"] = "UTC"
+time.tzset()
+
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -54,8 +61,6 @@ def test_date_combined_with_since_is_rejected():
         sd.resolve_window(local(2026, 7, 29), date="2026-07-20", since="2026-07-01")
 
 
-from pathlib import Path
-
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -99,3 +104,27 @@ def test_touches_window_matches_in_window_record():
     t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     assert sd.touches_window(t.records, window)
+
+
+def test_discover_transcripts_filters_by_depth_and_uuid(tmp_path):
+    # Valid UUID transcript one level deep: should be found
+    valid_uuid = "11111111-2222-3333-4444-555555555555"
+    (tmp_path / "project1" / f"{valid_uuid}.jsonl").parent.mkdir(exist_ok=True)
+    (tmp_path / "project1" / f"{valid_uuid}.jsonl").touch()
+
+    # Non-UUID filename: should be excluded
+    (tmp_path / "project2").mkdir(exist_ok=True)
+    (tmp_path / "project2" / "notes.jsonl").touch()
+
+    # Nested subagents path: should be excluded
+    (tmp_path / "project3" / "subagents").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "project3" / "subagents" / f"{valid_uuid}.jsonl").touch()
+
+    # Two levels deep (not one): should be excluded by glob
+    (tmp_path / "deep" / "nested" / "more").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "deep" / "nested" / "more" / f"{valid_uuid}.jsonl").touch()
+
+    found = sd.discover_transcripts(tmp_path)
+    assert len(found) == 1
+    assert found[0].name == f"{valid_uuid}.jsonl"
+    assert found[0].parent.name == "project1"
