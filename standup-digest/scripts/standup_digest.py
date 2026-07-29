@@ -11,7 +11,7 @@ import json
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -514,7 +514,7 @@ def distill_session(transcript: Transcript, window: Window, verifier) -> dict:
         "prompt_count": len(prompts),
         "prompt_chars_dropped": dropped,
         "prompts": prompts,
-        "refs": [vars(r) for r in refs],
+        "refs": [asdict(r) for r in refs],
     }
 
 
