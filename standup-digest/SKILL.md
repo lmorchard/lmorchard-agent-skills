@@ -98,7 +98,7 @@ check you can run against the table above before you print anything:
 ## Tue Jul 28
 
 - Refreshed PR #446 (pilo), still open, up for review     (confirmed, OPEN — not landed)
-- Cleared a batch of evals-judge issues (#97, #100, #101, ...)   (confirmed, CLOSED)
+- Cleared a batch of evals-judge issues (#96, #97, #99, #101)   (confirmed, CLOSED)
 - Zoo eval sandbox stood up, CDP flakiness still blocking clean runs   (no ref — from commits/prompts)
 
 _full digest: ~/.claude/standup/2026-07-28.md_
