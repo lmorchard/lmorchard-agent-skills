@@ -359,3 +359,83 @@ correct divergences, not drift to reconcile:
   a session's project at all — the schema's session object had no field in common with
   a commit's `repo` key, so the two were unrelatable by construction. See the fix-wave
   commits touching `distill_session` and `SKILL.md`'s field list.
+
+---
+
+# Session retrospective
+
+Written by the controller after the final review, because the SDD ledger holds the only
+cross-task record and it lives in a scratch directory that gets deleted.
+
+## Shape of the work
+
+Eight tasks, each implemented by a fresh subagent and reviewed by another. Six of the
+eight needed a fix round; none needed more than one. The final whole-branch review found
+seven more Important items, fixed in a single wave. Tests went 7 → 70.
+
+## Where the defects came from
+
+Ten real defects were caught. **Eight originated in the plan's reference code, not in the
+implementations.** Implementers copied the plan verbatim, as instructed, and inherited its
+bugs. The reviews, not the implementations, were the thing that caught them.
+
+That is the main lesson: **reference code in a plan gets copied verbatim, so it deserves
+the same scrutiny as shipped code.** Writing it in a planning document does not make it
+illustrative — it makes it a first draft that will ship unless someone reviews it.
+
+## The three recurring defect classes
+
+**1. Tests whose result depends on the machine, not the code** (three instances)
+
+- A window test used a `14:00:00Z` fixture against a *local*-midnight window. Passed in
+  UTC/Los_Angeles/Tokyo, failed at UTC+10 and beyond. Fixed by pinning `TZ=UTC`.
+- A test reached `repo_from_cwd` against the fixture's hardcoded
+  `/Users/lorchard/devel/tabs-project/pilo`. The reviewer assumed the path wouldn't
+  exist; it does, as a real `mozilla/pilo` checkout. The suite was reading a live
+  repository and passing for an unintended reason.
+- Fixtures were named `sample-session.jsonl` / `driver-session.jsonl`, which
+  `discover_transcripts`' UUID pattern can never match, so discovery-based tests found
+  zero sessions.
+
+**2. Assertions that cannot fail** (two instances)
+
+- `assert "tool_result" not in joined` held whether or not the filter under test existed,
+  because the fixture block had no `"text"` key for the filter to act on.
+- `assert isinstance(digest["warnings"], list)` — a literal in the returned dict.
+
+A negative assertion is only worth having if the value could have differed. The check is
+mechanical: delete the guard, and see whether the test goes red.
+
+**3. A mock faithful to a call that does not work** (one instance, the worst)
+
+Every test patched `sd._run`, the subprocess seam. That bought isolation and determinism,
+and it meant nothing noticed that `gh issue view` **rejects the `mergedAt` field**
+outright. Every issue-kind ref verified `unavailable` permanently — not just offline —
+so real closed issues could only ever be described as "worked on". Sixty unit tests and
+six task reviews passed over it. Only running the tool against live `gh` in the Task 8
+rehearsal surfaced it.
+
+A seam buys test isolation and pays for it with the ability to be confidently wrong about
+the real interface. Something in the process has to actually call the real thing. Here
+that was the end-to-end rehearsal, which justified its place in the plan by finding the
+one bug no unit test could.
+
+## Two notes on the tool's own premise
+
+The spec's example headline read "Refreshed + landed stale PR #446". Nobody had checked;
+`gh` reports #446 as `OPEN`. The verification layer caught its own author's fabrication on
+its own output, which is the clearest possible argument for building it.
+
+Separately, `prompts[]` turned out to contain harness-injected `task-notification` blocks
+carrying `<status>completed</status>` — a machine asserting completion inside the array
+labelled "human prompts", reaching the renderer through the one channel with no
+verification gate. Stripped in the extractor, and the renderer now restricts
+prompt-sourced claims to intent language.
+
+## Deliberately left undone
+
+- `owner/repo#123` cross-repo prose references are silently dropped. Fail-safe omission,
+  and beyond what the spec promises.
+- `standup_digest.py` is ~700 lines. Still one responsibility; a CLI/library split is
+  worth considering when it is next touched.
+- No lint target in the repo, so the `TZ` pin's E402-eligible imports go unenforced.
