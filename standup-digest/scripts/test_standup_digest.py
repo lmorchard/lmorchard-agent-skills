@@ -253,3 +253,76 @@ def test_distill_session_attributes_launch_from_whole_transcript():
 
     assert got["launch"] == "driver"
     assert got["prompt_count"] == 1  # the windowed prompt list is unaffected
+
+
+def test_extract_refs_from_pr_link_records():
+    records = [
+        {
+            "type": "pr-link",
+            "prNumber": 446,
+            "prRepository": "mozilla/pilo",
+            "prUrl": "https://github.com/mozilla/pilo/pull/446",
+        }
+    ]
+    refs = sd.extract_refs(records, [], default_repo=None)
+    assert len(refs) == 1
+    assert refs[0].kind == "pr"
+    assert refs[0].number == 446
+    assert refs[0].repo == "mozilla/pilo"
+    assert refs[0].source == "pr-link"
+
+
+def test_extract_refs_from_prose_urls():
+    prompts = ["look at https://github.com/lmorchard/agent-sessions/issues/4 please"]
+    refs = sd.extract_refs([], prompts, default_repo=None)
+    assert refs[0].kind == "issue"
+    assert refs[0].repo == "lmorchard/agent-sessions"
+    assert refs[0].number == 4
+    assert refs[0].source == "prose"
+
+
+def test_extract_refs_from_bare_hash_uses_default_repo():
+    refs = sd.extract_refs([], ["close out issue #97"], default_repo="mozilla/pilo")
+    assert refs[0].repo == "mozilla/pilo"
+    assert refs[0].number == 97
+    assert refs[0].kind == "issue"      # bare #N is ambiguous; assume issue
+    assert refs[0].source == "prose"
+
+
+def test_bare_hash_without_default_repo_is_dropped():
+    assert sd.extract_refs([], ["close out issue #97"], default_repo=None) == []
+
+
+def test_dedupe_prefers_pr_link_over_prose():
+    refs = [
+        sd.Ref(kind="pr", repo="mozilla/pilo", number=446, source="prose", url=None),
+        sd.Ref(
+            kind="pr", repo="mozilla/pilo", number=446, source="pr-link",
+            url="https://github.com/mozilla/pilo/pull/446",
+        ),
+    ]
+    got = sd.dedupe_refs(refs)
+    assert len(got) == 1
+    assert got[0].source == "pr-link"
+    assert got[0].url is not None
+
+
+def test_dedupe_keeps_distinct_repos_and_kinds():
+    refs = [
+        sd.Ref(kind="pr", repo="a/b", number=1, source="prose", url=None),
+        sd.Ref(kind="issue", repo="a/b", number=1, source="prose", url=None),
+        sd.Ref(kind="pr", repo="c/d", number=1, source="prose", url=None),
+    ]
+    assert len(sd.dedupe_refs(refs)) == 3
+
+
+def test_version_numbers_are_not_mistaken_for_refs():
+    refs = sd.extract_refs([], ["bump to v2.1.220 and #  spaced"], default_repo="a/b")
+    assert refs == []
+
+
+def test_distill_session_includes_pr_link_ref():
+    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    refs = sd.distill_session(t, window)["refs"]
+    assert any(r["number"] == 446 and r["source"] == "pr-link" for r in refs)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -221,6 +222,105 @@ def _distinct(values) -> list[str]:
     return list(dict.fromkeys(v for v in values if v))
 
 
+_GH_URL_RE = re.compile(
+    r"https?://github\.com/([\w.-]+/[\w.-]+)/(pull|issues)/(\d+)"
+)
+
+
+def _run(cmd: list[str], timeout: int = 20) -> str | None:
+    """Run a command, returning stdout, or None on any failure."""
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+_BARE_REF_RE = re.compile(r"(?<![\w/#])#(\d+)\b")
+
+
+@dataclass(frozen=True)
+class Ref:
+    kind: str            # "pr" | "issue"
+    repo: str | None
+    number: int
+    source: str          # "pr-link" | "prose"
+    url: str | None
+
+
+def repo_from_cwd(cwd: str) -> str | None:
+    """owner/name for a checkout's origin remote, or None."""
+    out = _run(["git", "-C", cwd, "remote", "get-url", "origin"])
+    if out is None:
+        return None
+    match = re.search(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?$", out.strip())
+    return match.group(1) if match else None
+
+
+def extract_refs(
+    records: list[dict], prompts: list[str], default_repo: str | None
+) -> list[Ref]:
+    refs: list[Ref] = []
+
+    for rec in records:
+        if rec.get("type") != "pr-link":
+            continue
+        number = rec.get("prNumber")
+        if not isinstance(number, int):
+            continue
+        refs.append(
+            Ref(
+                kind="pr",
+                repo=rec.get("prRepository"),
+                number=number,
+                source="pr-link",
+                url=rec.get("prUrl"),
+            )
+        )
+
+    for text in prompts:
+        for repo, kind_word, number in _GH_URL_RE.findall(text):
+            refs.append(
+                Ref(
+                    kind="pr" if kind_word == "pull" else "issue",
+                    repo=repo,
+                    number=int(number),
+                    source="prose",
+                    url=f"https://github.com/{repo}/{kind_word}/{number}",
+                )
+            )
+        if default_repo:
+            for number in _BARE_REF_RE.findall(text):
+                refs.append(
+                    Ref(
+                        kind="issue",
+                        repo=default_repo,
+                        number=int(number),
+                        source="prose",
+                        url=None,
+                    )
+                )
+
+    return dedupe_refs(refs)
+
+
+def dedupe_refs(refs: list[Ref]) -> list[Ref]:
+    """One ref per (repo, kind, number). pr-link beats prose."""
+    best: dict[tuple, Ref] = {}
+    for ref in refs:
+        key = (ref.repo, ref.kind, ref.number)
+        current = best.get(key)
+        if current is None or (
+            current.source == "prose" and ref.source == "pr-link"
+        ):
+            best[key] = ref
+    return sorted(best.values(), key=lambda r: (r.repo or "", r.kind, r.number))
+
+
 def distill_session(transcript: Transcript, window: Window) -> dict:
     """Neutral facts about one session. No editorial judgment."""
     records = transcript.records
@@ -239,6 +339,9 @@ def distill_session(transcript: Transcript, window: Window) -> dict:
     session_ids = [r.get("sessionId") for r in records if r.get("sessionId")]
     cwds = _distinct(r.get("cwd") for r in records)
 
+    default_repo = repo_from_cwd(cwds[0]) if cwds else None
+    refs = extract_refs(records, prompts, default_repo)
+
     return {
         "session_id": session_ids[-1] if session_ids else transcript.path.stem,
         "transcript": str(transcript.path),
@@ -252,5 +355,5 @@ def distill_session(transcript: Transcript, window: Window) -> dict:
         "prompt_count": len(prompts),
         "prompt_chars_dropped": dropped,
         "prompts": prompts,
-        "refs": [],  # populated in Task 4
+        "refs": [vars(r) for r in refs],
     }
