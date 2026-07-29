@@ -64,13 +64,16 @@ in `agent-sessions/driver/gate.py`.
 ### CLI
 
 ```
-standup_digest.py [--date YYYY-MM-DD] [--since ISO] [--until ISO]
-                  [--no-verify] [--out PATH]
+standup_digest.py [--date YYYY-MM-DD] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
+                  [--no-verify] [--root PATH] [--out PATH]
 ```
 
-Writes JSON to stdout by default; `--out` writes to a file instead. `--date` is shorthand
-for a single calendar day. `--since`/`--until` override the window directly.
-`--no-verify` skips all `git` and `gh` calls, for offline use and fast tests.
+Writes JSON to stdout by default; `--out` writes to a file instead. All dates are
+`YYYY-MM-DD` and resolve to local midnight. `--date` is shorthand for a single calendar
+day and cannot be combined with `--since` or `--until`; `--until` is exclusive.
+`--no-verify` skips all `git` and `gh` calls, for offline use and fast tests. `--root`
+overrides the `~/.claude/projects` location, which exists so tests can point at a fixture
+directory.
 
 ### Window
 
