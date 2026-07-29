@@ -1,3 +1,4 @@
+import json
 import os
 import time
 
@@ -382,3 +383,92 @@ def test_distill_session_attaches_bare_hash_to_resolved_repo(monkeypatch):
         and r["repo"] == "mozilla/pilo" and r["source"] == "prose"
         for r in refs
     )
+
+
+def test_null_verifier_marks_everything_unavailable():
+    v = sd.NullVerifier()
+    ref = sd.Ref(kind="pr", repo="a/b", number=1, source="prose", url=None)
+    got = v.verify_ref(ref)
+    assert got["verification"] == "unavailable"
+    assert got["state"] is None
+    assert v.commits("/tmp", None) == []
+
+
+def test_gh_verifier_confirms_merged_pr(monkeypatch):
+    payload = {
+        "state": "MERGED",
+        "title": "feat(core): page exploration tools",
+        "url": "https://github.com/mozilla/pilo/pull/446",
+        "mergedAt": "2026-07-28T18:22:11Z",
+        "closedAt": "2026-07-28T18:22:11Z",
+    }
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: json.dumps(payload))
+    v = sd.GhVerifier()
+    ref = sd.Ref(kind="pr", repo="mozilla/pilo", number=446, source="pr-link", url=None)
+    got = v.verify_ref(ref)
+
+    assert got["verification"] == "confirmed"
+    assert got["state"] == "MERGED"
+    assert got["merged_at"] == "2026-07-28T18:22:11Z"
+    assert v.warnings == []
+
+
+def test_gh_verifier_degrades_to_unavailable(monkeypatch):
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
+    v = sd.GhVerifier()
+    ref = sd.Ref(kind="pr", repo="mozilla/pilo", number=446, source="pr-link", url=None)
+    got = v.verify_ref(ref)
+
+    assert got["verification"] == "unavailable"
+    assert got["state"] is None
+    assert len(v.warnings) == 1
+    assert "mozilla/pilo#446" in v.warnings[0]
+
+
+def test_gh_verifier_skips_refs_without_a_repo():
+    v = sd.GhVerifier()
+    ref = sd.Ref(kind="pr", repo=None, number=1, source="prose", url=None)
+    assert v.verify_ref(ref)["verification"] == "unavailable"
+
+
+def test_gh_verifier_caches_repeat_lookups(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, timeout=20):
+        calls.append(cmd)
+        return json.dumps({"state": "OPEN", "title": "t", "url": "u"})
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    v = sd.GhVerifier()
+    ref = sd.Ref(kind="pr", repo="a/b", number=1, source="prose", url=None)
+    v.verify_ref(ref)
+    v.verify_ref(ref)
+    assert len(calls) == 1
+    assert v.gh_calls == 1      # surfaced as stats.gh_calls in the digest
+
+
+def test_commits_parses_git_log(monkeypatch):
+    log = (
+        "abc1234\x1ffix(core): guard SPA snapshot\x1f2026-07-28T14:02:11-04:00\n"
+        "def5678\x1fchore: bump deps\x1f2026-07-28T15:10:00-04:00"
+    )
+
+    def fake_run(cmd, timeout=20):
+        if cmd[:2] == ["git", "-C"] and "rev-parse" in cmd:
+            return "/Users/lorchard/devel/tabs-project/pilo/.git"
+        if "log" in cmd:
+            return log
+        if "remote" in cmd:
+            return "git@github.com:mozilla/pilo.git"
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    got = sd.GhVerifier().commits("/Users/lorchard/devel/tabs-project/pilo", window)
+
+    assert len(got) == 2
+    assert got[0]["sha"] == "abc1234"
+    assert got[0]["subject"] == "fix(core): guard SPA snapshot"
+    assert got[0]["repo"] == "mozilla/pilo"

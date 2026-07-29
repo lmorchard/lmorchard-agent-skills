@@ -240,6 +240,135 @@ def _run(cmd: list[str], timeout: int = 20) -> str | None:
     return proc.stdout
 
 
+GIT_LOG_SEP = "\x1f"
+
+_UNVERIFIED = {
+    "verification": "unavailable",
+    "state": None,
+    "title": None,
+    "merged_at": None,
+    "closed_at": None,
+}
+
+
+class NullVerifier:
+    """Used by --no-verify and by tests. Touches nothing."""
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+        self.gh_calls = 0
+
+    def verify_ref(self, ref: Ref) -> dict:
+        return dict(_UNVERIFIED)
+
+    def commits(self, cwd: str, window) -> list[dict]:
+        return []
+
+
+class GhVerifier:
+    """Checks claims against real git and gh state."""
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+        self.gh_calls = 0
+        self._ref_cache: dict[tuple, dict] = {}
+        self._email: str | None = None
+
+    def verify_ref(self, ref: Ref) -> dict:
+        if not ref.repo:
+            return dict(_UNVERIFIED)
+
+        key = (ref.repo, ref.kind, ref.number)
+        if key in self._ref_cache:
+            return dict(self._ref_cache[key])
+
+        noun = "pr" if ref.kind == "pr" else "issue"
+        self.gh_calls += 1
+        raw = _run(
+            [
+                "gh", noun, "view", str(ref.number),
+                "--repo", ref.repo,
+                "--json", "state,title,url,mergedAt,closedAt",
+            ]
+        )
+        if raw is None:
+            self.warnings.append(
+                f"gh unavailable for {ref.repo}#{ref.number}; reported as unverified"
+            )
+            result = dict(_UNVERIFIED)
+        else:
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                self.warnings.append(f"gh returned unparseable JSON for {ref.repo}#{ref.number}")
+                result = dict(_UNVERIFIED)
+            else:
+                result = {
+                    "verification": "confirmed",
+                    "state": data.get("state"),
+                    "title": data.get("title"),
+                    "merged_at": data.get("mergedAt"),
+                    "closed_at": data.get("closedAt"),
+                }
+                if data.get("url"):
+                    result["url"] = data["url"]
+
+        self._ref_cache[key] = result
+        return dict(result)
+
+    def _author_email(self) -> str | None:
+        if self._email is None:
+            out = _run(["git", "config", "user.email"])
+            self._email = out.strip() if out else ""
+        return self._email or None
+
+    def commits(self, cwd: str, window) -> list[dict]:
+        """Les's commits in `cwd`'s repository inside the window."""
+        common = _run(
+            ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]
+        )
+        if common is None:
+            self.warnings.append(f"not a git repository, commits skipped: {cwd}")
+            return []
+        repo_root = str(Path(common.strip()).parent)
+
+        email = self._author_email()
+        if not email:
+            self.warnings.append("git user.email unset; commit authorship not filtered")
+
+        cmd = [
+            "git", "-C", repo_root, "log",
+            f"--since={window.since.isoformat()}",
+            f"--until={window.until.isoformat()}",
+            f"--pretty=format:%h{GIT_LOG_SEP}%s{GIT_LOG_SEP}%cI",
+            "--all", "--no-merges",
+        ]
+        if email:
+            cmd.append(f"--author={email}")
+
+        out = _run(cmd)
+        if not out:
+            return []
+
+        repo = repo_from_cwd(repo_root)
+        commits = []
+        for line in out.strip().splitlines():
+            parts = line.split(GIT_LOG_SEP)
+            if len(parts) != 3:
+                continue
+            sha, subject, committed = parts
+            commits.append(
+                {
+                    "repo": repo,
+                    "path": repo_root,
+                    "sha": sha,
+                    "subject": subject,
+                    "committed_at": committed,
+                }
+            )
+        return commits
+
+
 _BARE_REF_RE = re.compile(r"(?<![\w/#])#(\d+)\b")
 
 
