@@ -124,3 +124,124 @@ def touches_window(records: list[dict], window: Window) -> bool:
 def discover_transcripts(root: Path) -> list[Path]:
     """Every top-level session transcript under ~/.claude/projects."""
     return sorted(p for p in root.glob("*/*.jsonl") if is_session_transcript(p))
+
+
+PROMPT_CHAR_LIMIT = 1500
+TRUNCATION_MARKER = "… [truncated]"
+
+_WRAPPER_RE = re.compile(
+    r"<(local-command-caveat|system-reminder|command-name|command-message|command-args)>"
+    r".*?</\1>",
+    re.DOTALL,
+)
+
+_DRIVER_MARKERS = (
+    re.compile(r"You are running unattended", re.IGNORECASE),
+    re.compile(r"invoked by the .{0,40}driver", re.IGNORECASE),
+    re.compile(r"There is no human watching", re.IGNORECASE),
+)
+
+
+def strip_wrappers(text: str) -> str:
+    """Remove harness-injected wrapper blocks from a prompt."""
+    return _WRAPPER_RE.sub("", text).strip()
+
+
+def _prompt_text(rec: dict) -> str:
+    """Human-authored text from a user record, excluding tool payloads."""
+    content = rec.get("message", {}).get("content")
+    if isinstance(content, str):
+        return strip_wrappers(content)
+    if isinstance(content, list):
+        parts = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return strip_wrappers("\n".join(parts))
+    return ""
+
+
+def extract_prompts(records: list[dict], window: Window) -> tuple[list[str], int]:
+    """In-window human prompts, truncated, with dropped chars counted."""
+    prompts: list[str] = []
+    dropped = 0
+    for rec in records:
+        if rec.get("type") != "user" or rec.get("isMeta") is True:
+            continue
+        if not _is_mainline(rec):
+            continue
+        moment = record_timestamp(rec)
+        if moment is None or not (window.since <= moment < window.until):
+            continue
+        text = _prompt_text(rec)
+        if not text:
+            continue
+        if len(text) > PROMPT_CHAR_LIMIT:
+            dropped += len(text) - PROMPT_CHAR_LIMIT
+            text = text[:PROMPT_CHAR_LIMIT] + TRUNCATION_MARKER
+        prompts.append(text)
+    return prompts, dropped
+
+
+def infer_launch(prompts: list[str]) -> str:
+    """Whether Les typed this session's first prompt or the board-driver did."""
+    if not prompts:
+        return "unknown"
+    first = prompts[0]
+    if any(marker.search(first) for marker in _DRIVER_MARKERS):
+        return "driver"
+    return "human"
+
+
+def project_label(dirname: str, cwds: list[str] | None = None) -> str:
+    """Short project label. Prefers a recorded cwd; the dirname is lossy."""
+    home = str(Path.home())
+    if cwds:
+        base = cwds[0]
+        # A worktree lives at <repo>/.worktrees/<name>; report the repo.
+        if "/.worktrees/" in base:
+            base = base.split("/.worktrees/")[0]
+        for prefix in (f"{home}/devel/", f"{home}/"):
+            if base.startswith(prefix):
+                return base[len(prefix):]
+        return base
+    return dirname.replace("-", "/").lstrip("/")
+
+
+def _distinct(values) -> list[str]:
+    return sorted({v for v in values if v})
+
+
+def distill_session(transcript: Transcript, window: Window) -> dict:
+    """Neutral facts about one session. No editorial judgment."""
+    records = transcript.records
+    in_window = [
+        rec
+        for rec in records
+        if _is_mainline(rec)
+        and (moment := record_timestamp(rec)) is not None
+        and window.since <= moment < window.until
+    ]
+    moments = sorted(m for rec in in_window if (m := record_timestamp(rec)))
+    prompts, dropped = extract_prompts(records, window)
+
+    titles = [r.get("aiTitle") for r in records if r.get("type") == "ai-title"]
+    session_ids = [r.get("sessionId") for r in records if r.get("sessionId")]
+    cwds = _distinct(r.get("cwd") for r in records)
+
+    return {
+        "session_id": session_ids[-1] if session_ids else transcript.path.stem,
+        "transcript": str(transcript.path),
+        "title": titles[-1] if titles else None,
+        "project": project_label(transcript.path.parent.name, cwds),
+        "cwds": cwds,
+        "branches": _distinct(r.get("gitBranch") for r in records),
+        "launch": infer_launch(prompts),
+        "started_at": moments[0].astimezone().isoformat() if moments else None,
+        "ended_at": moments[-1].astimezone().isoformat() if moments else None,
+        "prompt_count": len(prompts),
+        "prompt_chars_dropped": dropped,
+        "prompts": prompts,
+        "refs": [],  # populated in Task 4
+    }

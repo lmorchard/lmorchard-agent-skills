@@ -128,3 +128,94 @@ def test_discover_transcripts_filters_by_depth_and_uuid(tmp_path):
     assert len(found) == 1
     assert found[0].name == f"{valid_uuid}.jsonl"
     assert found[0].parent.name == "project1"
+
+
+def test_strip_wrappers_removes_system_noise():
+    text = (
+        "<local-command-caveat>blah</local-command-caveat>"
+        "<system-reminder>nope</system-reminder>"
+        "<command-name>/clear</command-name>"
+        "real content"
+    )
+    assert sd.strip_wrappers(text) == "real content"
+
+
+def test_extract_prompts_keeps_only_human_mainline_text():
+    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    prompts, dropped = sd.extract_prompts(t.records, window)
+
+    assert dropped == 0
+    assert len(prompts) == 2
+    assert prompts[0].startswith("PR 446 has gotten quite stale")
+    assert prompts[1] == "Now resolve the conflicts and close out issue #97."
+    joined = " ".join(prompts)
+    assert "sidechain prompt" not in joined      # isSidechain
+    assert "meta prompt" not in joined           # isMeta
+    assert "tool_result" not in joined           # block-list tool payloads
+    assert "outside the window" not in joined    # out of window
+    assert "ignore me" not in joined             # stripped wrapper
+
+
+def test_extract_prompts_truncates_and_counts():
+    long_text = "x" * (sd.PROMPT_CHAR_LIMIT + 250)
+    records = [
+        {
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-28T14:00:00.000Z",
+            "message": {"role": "user", "content": long_text},
+        }
+    ]
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    prompts, dropped = sd.extract_prompts(records, window)
+
+    assert dropped == 250
+    assert prompts[0].endswith("… [truncated]")
+    assert len(prompts[0]) == sd.PROMPT_CHAR_LIMIT + len("… [truncated]")
+
+
+def test_infer_launch_detects_driver_preamble():
+    assert sd.infer_launch(["You are running unattended, invoked by..."]) == "driver"
+    assert sd.infer_launch(["There is no human watching this run."]) == "driver"
+
+
+def test_infer_launch_defaults_to_human():
+    assert sd.infer_launch(["please fix the flaky test"]) == "human"
+
+
+def test_infer_launch_unknown_when_no_prompts():
+    assert sd.infer_launch([]) == "unknown"
+
+
+def test_project_label_prefers_recorded_cwd():
+    label = sd.project_label(
+        "-Users-lorchard-devel-tabs-project-pilo",
+        ["/Users/lorchard/devel/tabs-project/pilo/.worktrees/pet"],
+    )
+    assert label == "tabs-project/pilo"
+
+
+def test_project_label_falls_back_to_dirname():
+    assert sd.project_label("-Users-lorchard-devel-foo", []) == "Users/lorchard/devel/foo"
+
+
+def test_distill_session_collects_metadata():
+    t = sd.read_transcript(FIXTURES / "sample-session.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    got = sd.distill_session(t, window)
+
+    assert got["title"] == "Evaluate and refresh stale PR 446"
+    assert got["session_id"] == "11111111-2222-3333-4444-555555555555"
+    assert got["launch"] == "human"
+    assert got["prompt_count"] == 2
+    assert got["branches"] == ["feat/pet", "main"]
+    assert got["started_at"].startswith("2026-07-28T")
+    # ended_at must be the last in-window record, not the 07-30 one
+    assert got["ended_at"].startswith("2026-07-28T")
+
+
+def test_distill_session_marks_driver_launch():
+    t = sd.read_transcript(FIXTURES / "driver-session.jsonl")
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    assert sd.distill_session(t, window)["launch"] == "driver"

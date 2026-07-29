@@ -1,0 +1,2 @@
+{"type":"user","isSidechain":false,"timestamp":"2026-07-28T10:00:00.000Z","cwd":"/Users/lorchard/devel/agent-sessions","gitBranch":"main","sessionId":"99999999-8888-7777-6666-555555555555","message":{"role":"user","content":"You are running unattended, invoked by the agent-session board-driver.\nWork issue https://github.com/lmorchard/agent-sessions/issues/4"}}
+{"type":"ai-title","aiTitle":"Tackle GitHub issue 4","sessionId":"99999999-8888-7777-6666-555555555555"}
