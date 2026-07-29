@@ -91,15 +91,24 @@ alone, e.g. "pilo (feat/retry-backoff): session with no recorded prompts".
 
 **To the terminal**, three or four bullets ordered by significance, not chronology:
 
+Annotate each bullet's phrasing against its ref state — not literal output text, but a
+check you can run against the table above before you print anything:
+
 ```
 ## Tue Jul 28
 
-- Refreshed + landed stale PR #446 (pilo)
-- Cleared a batch of evals-judge issues (#97, #100, #101, ...)
-- Zoo eval sandbox stood up, CDP flakiness still blocking clean runs
+- Refreshed PR #446 (pilo), still open, up for review     (confirmed, OPEN — not landed)
+- Cleared a batch of evals-judge issues (#97, #100, #101, ...)   (confirmed, CLOSED)
+- Zoo eval sandbox stood up, CDP flakiness still blocking clean runs   (no ref — from commits/prompts)
 
 _full digest: ~/.claude/standup/2026-07-28.md_
 ```
+
+The first line is the trap to avoid: PR #446 has genuinely been refreshed but is still
+`OPEN` — "landed" or "merged" would be the fabrication this whole layer exists to
+prevent. The second line's "cleared" is only honest because the issue refs are
+`confirmed` + `CLOSED`; if any of them come back `unavailable`, drop to "worked on" for
+those numbers instead — do not let one confirmed closure license the whole batch.
 
 **To `~/.claude/standup/YYYY-MM-DD.md`** (create the directory if needed), the full
 detail: one section per project, sessions underneath with title (or the fallback above),

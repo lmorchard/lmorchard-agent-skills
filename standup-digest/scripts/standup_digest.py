@@ -295,12 +295,18 @@ class GhVerifier:
             return dict(self._ref_cache[key])
 
         noun = "pr" if ref.kind == "pr" else "issue"
+        # Issues have no mergedAt field; gh rejects the PR field list for them.
+        fields = (
+            "state,title,url,mergedAt,closedAt"
+            if noun == "pr"
+            else "state,title,url,closedAt"
+        )
         self.gh_calls += 1
         raw = _run(
             [
                 "gh", noun, "view", str(ref.number),
                 "--repo", ref.repo,
-                "--json", "state,title,url,mergedAt,closedAt",
+                "--json", fields,
             ]
         )
         if raw is None:

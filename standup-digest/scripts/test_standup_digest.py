@@ -435,6 +435,55 @@ def test_gh_verifier_confirms_merged_pr(monkeypatch):
     assert v.warnings == []
 
 
+def test_gh_verifier_requests_pr_and_issue_field_lists_separately(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, timeout=20):
+        calls.append(cmd)
+        return json.dumps({"state": "OPEN", "title": "t", "url": "u"})
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    v = sd.GhVerifier()
+
+    pr_ref = sd.Ref(kind="pr", repo="mozilla/pilo", number=446, source="pr-link", url=None)
+    v.verify_ref(pr_ref)
+    issue_ref = sd.Ref(
+        kind="issue", repo="Mozilla-Ocho/pilo-evals-judge", number=97, source="prose", url=None
+    )
+    v.verify_ref(issue_ref)
+
+    assert len(calls) == 2
+    pr_cmd, issue_cmd = calls
+    pr_fields = pr_cmd[pr_cmd.index("--json") + 1]
+    issue_fields = issue_cmd[issue_cmd.index("--json") + 1]
+    assert "mergedAt" in pr_fields
+    assert "mergedAt" not in issue_fields
+    # gh rejects mergedAt for issue view entirely, so the issue field list
+    # must not merely reorder the PR list -- it must actually omit the field.
+    assert issue_fields != pr_fields
+
+
+def test_gh_verifier_confirms_closed_issue(monkeypatch):
+    payload = {
+        "state": "CLOSED",
+        "title": "Move cloud-eval secret management off the laptop",
+        "url": "https://github.com/Mozilla-Ocho/pilo-evals-judge/issues/97",
+        "closedAt": "2026-07-28T23:59:30Z",
+    }
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: json.dumps(payload))
+    v = sd.GhVerifier()
+    ref = sd.Ref(
+        kind="issue", repo="Mozilla-Ocho/pilo-evals-judge", number=97, source="prose", url=None
+    )
+    got = v.verify_ref(ref)
+
+    assert got["verification"] == "confirmed"
+    assert got["state"] == "CLOSED"
+    assert got["merged_at"] is None
+    assert got["closed_at"] == "2026-07-28T23:59:30Z"
+    assert v.warnings == []
+
+
 def test_gh_verifier_degrades_to_unavailable(monkeypatch):
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
     v = sd.GhVerifier()
