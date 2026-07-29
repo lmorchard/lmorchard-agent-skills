@@ -472,3 +472,76 @@ def test_commits_parses_git_log(monkeypatch):
     assert got[0]["sha"] == "abc1234"
     assert got[0]["subject"] == "fix(core): guard SPA snapshot"
     assert got[0]["repo"] == "mozilla/pilo"
+
+
+def test_commits_scopes_author_email_per_repo(monkeypatch):
+    # Transcripts span both work and personal repos, each with its own
+    # locally-configured user.email. The lookup must be scoped to the repo
+    # being scanned, not read from ambient cwd and reused for every repo.
+    config_calls = []
+    log_cmds = []
+
+    def fake_run(cmd, timeout=20):
+        if "rev-parse" in cmd:
+            repo_dir = cmd[cmd.index("-C") + 1]
+            return f"{repo_dir}/.git"
+        if "config" in cmd:
+            config_calls.append(cmd)
+            repo_dir = cmd[cmd.index("-C") + 1]
+            return "work@mozilla.com" if repo_dir == "/repo/work" else "personal@example.com"
+        if "log" in cmd:
+            log_cmds.append(cmd)
+            return ""
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    v = sd.GhVerifier()
+
+    v.commits("/repo/work", window)
+    v.commits("/repo/personal", window)
+    v.commits("/repo/work", window)  # repeat: must hit the per-repo cache
+
+    assert len(config_calls) == 2   # one lookup per distinct repo, not per call
+    assert "--author=work@mozilla.com" in log_cmds[0]
+    assert "--author=personal@example.com" in log_cmds[1]
+    assert "--author=work@mozilla.com" in log_cmds[2]
+
+
+def test_commits_warns_when_git_log_fails(monkeypatch):
+    def fake_run(cmd, timeout=20):
+        if "rev-parse" in cmd:
+            return "/repo/.git"
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "log" in cmd:
+            return None
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    v = sd.GhVerifier()
+    got = v.commits("/repo", window)
+
+    assert got == []
+    assert len(v.warnings) == 1
+    assert "git log failed" in v.warnings[0]
+
+
+def test_commits_empty_log_is_not_a_warning(monkeypatch):
+    def fake_run(cmd, timeout=20):
+        if "rev-parse" in cmd:
+            return "/repo/.git"
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "log" in cmd:
+            return ""
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    v = sd.GhVerifier()
+    got = v.commits("/repo", window)
+
+    assert got == []
+    assert v.warnings == []

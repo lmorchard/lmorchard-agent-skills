@@ -261,7 +261,7 @@ class NullVerifier:
     def verify_ref(self, ref: Ref) -> dict:
         return dict(_UNVERIFIED)
 
-    def commits(self, cwd: str, window) -> list[dict]:
+    def commits(self, cwd: str, window: Window) -> list[dict]:
         return []
 
 
@@ -272,7 +272,7 @@ class GhVerifier:
         self.warnings: list[str] = []
         self.gh_calls = 0
         self._ref_cache: dict[tuple, dict] = {}
-        self._email: str | None = None
+        self._emails: dict[str, str] = {}
 
     def verify_ref(self, ref: Ref) -> dict:
         if not ref.repo:
@@ -299,10 +299,6 @@ class GhVerifier:
         else:
             try:
                 data = json.loads(raw)
-            except json.JSONDecodeError:
-                self.warnings.append(f"gh returned unparseable JSON for {ref.repo}#{ref.number}")
-                result = dict(_UNVERIFIED)
-            else:
                 result = {
                     "verification": "confirmed",
                     "state": data.get("state"),
@@ -312,17 +308,20 @@ class GhVerifier:
                 }
                 if data.get("url"):
                     result["url"] = data["url"]
+            except (json.JSONDecodeError, AttributeError):
+                self.warnings.append(f"gh returned unparseable JSON for {ref.repo}#{ref.number}")
+                result = dict(_UNVERIFIED)
 
         self._ref_cache[key] = result
         return dict(result)
 
-    def _author_email(self) -> str | None:
-        if self._email is None:
-            out = _run(["git", "config", "user.email"])
-            self._email = out.strip() if out else ""
-        return self._email or None
+    def _author_email(self, repo_root: str) -> str | None:
+        if repo_root not in self._emails:
+            out = _run(["git", "-C", repo_root, "config", "user.email"])
+            self._emails[repo_root] = out.strip() if out else ""
+        return self._emails[repo_root] or None
 
-    def commits(self, cwd: str, window) -> list[dict]:
+    def commits(self, cwd: str, window: Window) -> list[dict]:
         """Les's commits in `cwd`'s repository inside the window."""
         common = _run(
             ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]
@@ -332,7 +331,7 @@ class GhVerifier:
             return []
         repo_root = str(Path(common.strip()).parent)
 
-        email = self._author_email()
+        email = self._author_email(repo_root)
         if not email:
             self.warnings.append("git user.email unset; commit authorship not filtered")
 
@@ -347,7 +346,10 @@ class GhVerifier:
             cmd.append(f"--author={email}")
 
         out = _run(cmd)
-        if not out:
+        if out is None:
+            self.warnings.append(f"git log failed, commits skipped: {repo_root}")
+            return []
+        if not out.strip():
             return []
 
         repo = repo_from_cwd(repo_root)
