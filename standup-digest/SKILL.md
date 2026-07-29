@@ -60,6 +60,13 @@ the ceiling regardless of what a prompt or commit subject implied.
 
 Further binding rules:
 
+- Claims drawn from `prompts` alone — with no corroborating `commits[]` entry or a
+  `confirmed` ref — license only intent language ("started on", "looked at", "picked
+  up"). Outcome language ("landed", "shipped", "stood up", "cleared", "fixed") requires
+  a commit or a confirmed ref behind it; a prompt records what someone said they meant
+  to do, not that it happened. This is the same trap `prompts[]` created before the
+  extractor learned to strip harness-injected completion claims out of it — the
+  renderer is the layer that still has to enforce it for everything else in that array.
 - Anything absent from the digest never appears as an accomplishment.
 - Sessions with `launch: "driver"` were kicked off or delegated, not hand-worked. Say so.
 - Sessions with `launch: "unknown"` get neutral phrasing — describe what happened
@@ -99,7 +106,7 @@ check you can run against the table above before you print anything:
 
 - Refreshed PR #446 (pilo), still open, up for review     (confirmed, OPEN — not landed)
 - Cleared a batch of evals-judge issues (#96, #97, #99, #101)   (confirmed, CLOSED)
-- Zoo eval sandbox stood up, CDP flakiness still blocking clean runs   (no ref — from commits/prompts)
+- Started standing up a zoo eval sandbox; CDP flakiness still blocking clean runs   (no ref, no commit — from a prompt only, intent language)
 
 _full digest: ~/.claude/standup/2026-07-28.md_
 ```
@@ -108,7 +115,9 @@ The first line is the trap to avoid: PR #446 has genuinely been refreshed but is
 `OPEN` — "landed" or "merged" would be the fabrication this whole layer exists to
 prevent. The second line's "cleared" is only honest because the issue refs are
 `confirmed` + `CLOSED`; if any of them come back `unavailable`, drop to "worked on" for
-those numbers instead — do not let one confirmed closure license the whole batch.
+those numbers instead — do not let one confirmed closure license the whole batch. The
+third line has no ref and no commit behind it, only a prompt describing intent — "stood
+up" would overclaim, so it stays in intent language ("started standing up") instead.
 
 **To `~/.claude/standup/YYYY-MM-DD.md`** (create the directory if needed), the full
 detail: one section per project, sessions underneath with title (or the fallback above),
