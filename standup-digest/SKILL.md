@@ -34,11 +34,11 @@ The JSON has: `schema_version`, `generated_at`, `window` (`since`/`until`/`rule`
 `stats` (`sessions`/`projects`/`malformed_lines`/`prompt_chars_dropped`/`gh_calls`),
 `warnings`, `sessions[]`, and `commits[]`.
 
-Each session carries `session_id`, `transcript`, `title`, `project`, `cwds`, `branches`,
-`launch`, `started_at`, `ended_at`, `prompt_count`, `prompt_chars_dropped`, `prompts`,
-and `refs[]`. Each ref carries `kind`, `repo`, `number`, `source`, `url`, `verification`,
-`state`, `title`, `merged_at`, `closed_at`. Each commit carries `repo`, `path`, `sha`,
-`subject`, `committed_at`.
+Each session carries `session_id`, `transcript`, `title`, `project`, `cwds`, `repo`,
+`branches`, `launch`, `started_at`, `ended_at`, `prompt_count`, `prompt_chars_dropped`,
+`prompts`, and `refs[]`. Each ref carries `kind`, `repo`, `number`, `source`, `url`,
+`verification`, `state`, `title`, `merged_at`, `closed_at`. Each commit carries `repo`,
+`path`, `sha`, `subject`, `committed_at`.
 
 Do not invent fields, and do not read anything from the digest beyond this list.
 
@@ -112,10 +112,13 @@ those numbers instead — do not let one confirmed closure license the whole bat
 
 **To `~/.claude/standup/YYYY-MM-DD.md`** (create the directory if needed), the full
 detail: one section per project, sessions underneath with title (or the fallback above),
-branches, refs with their verified state, commits, and a one-line gloss of intent drawn
-from the prompts. Note in the file, once, that prompts are truncated when
-`prompt_chars_dropped` is nonzero for a session or nonzero in `stats` overall — the
-detail file is not a verbatim transcript.
+branches, refs with their verified state, and a one-line gloss of intent drawn from the
+prompts. `commits[]` is keyed by `repo`, not by session — a session's own `repo` field
+tells you which project section it belongs to, but a commit is never attributable to one
+particular session within that project, so list a project's commits once at the section
+level, not repeated or split under individual sessions. Note in the file, once, that
+prompts are truncated when `prompt_chars_dropped` is nonzero for a session or nonzero in
+`stats` overall — the detail file is not a verbatim transcript.
 
 Name the file for the window's start date.
 
