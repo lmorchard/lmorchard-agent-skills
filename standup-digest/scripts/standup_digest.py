@@ -148,6 +148,11 @@ def discover_transcripts(root: Path) -> list[Path]:
 PROMPT_CHAR_LIMIT = 1500
 TRUNCATION_MARKER = "… [truncated]"
 
+# Assistant-prose narrative signal: per-turn truncation + total per-session budget.
+# Kept small on purpose -- this is a sense of the conversation, not a transcript dump.
+ASSISTANT_TURN_CHAR_LIMIT = 600
+ASSISTANT_NOTES_BUDGET = 3000
+
 _WRAPPER_RE = re.compile(
     r"<(local-command-caveat|system-reminder|command-name|command-message|command-args"
     r"|task-notification|local-command-stdout)>"
@@ -165,6 +170,67 @@ _DRIVER_MARKERS = (
 def strip_wrappers(text: str) -> str:
     """Remove harness-injected wrapper blocks from a prompt."""
     return _WRAPPER_RE.sub("", text).strip()
+
+
+_CD_RE = re.compile(r"""\bcd\s+(?:'([^']+)'|"([^"]+)"|([^\s;&|<>]+))""")
+# `-C` is git's dir flag only as a top-level option (before the subcommand). Between
+# `git` and `-C` allow only option tokens and `-c key=val` pairs -- never a bare
+# subcommand word, so `git commit -C <ref>` (reuse a commit message) isn't mistaken
+# for a directory change.
+_GIT_C_RE = re.compile(
+    r"""\bgit\b(?:\s+-c\s+[^\s;&|]+|\s+-[^\s;&|]+)*?"""
+    r"""\s+-C\s+(?:'([^']+)'|"([^"]+)"|([^\s;&|<>]+))"""
+)
+
+
+def _bash_commands(records: list[dict]):
+    """Command strings from every Bash tool-use block in the records."""
+    for rec in records:
+        content = rec.get("message", {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_use"
+                and block.get("name") == "Bash"
+            ):
+                cmd = (block.get("input") or {}).get("command")
+                if isinstance(cmd, str):
+                    yield cmd
+
+
+def _normalize_dir(raw: str) -> str | None:
+    """An absolute directory path, or None if it isn't usable as one."""
+    if raw.startswith("~"):
+        raw = str(Path(raw).expanduser())
+    if not raw.startswith("/"):
+        return None  # relative or variable-expanded: can't resolve, skip
+    cleaned = raw.rstrip("/") or "/"
+    parts = cleaned.split("/")
+    if "node_modules" in parts or ".git" in parts:
+        return None  # dependency tree or git internals -- not a work dir
+    return cleaned
+
+
+def harvest_dirs(records: list[dict]) -> list[str]:
+    """Absolute dirs reached via `cd`/`git -C` in Bash calls, deduped in order.
+
+    The transcript's `cwd` field records only the session's launch directory; work
+    done in a sibling directory via `cd`/`git -C` inside a Bash command is otherwise
+    invisible to the commit scan. Absolute paths only -- resolving relative `cd`s
+    would mean simulating shell state across &&/; chains, and the absolute form
+    dominates in practice.
+    """
+    dirs: dict[str, None] = {}
+    for cmd in _bash_commands(records):
+        for regex in (_CD_RE, _GIT_C_RE):
+            for match in regex.finditer(cmd):
+                raw = next(g for g in match.groups() if g is not None)
+                path = _normalize_dir(raw)
+                if path:
+                    dirs.setdefault(path, None)
+    return list(dirs)
 
 
 def _prompt_text(rec: dict) -> str:
@@ -208,6 +274,54 @@ def extract_prompts(
             text = text[:PROMPT_CHAR_LIMIT] + TRUNCATION_MARKER
         prompts.append(text)
     return prompts, dropped
+
+
+def _final_text_block(rec: dict) -> str:
+    """Closing prose of one assistant turn: its last text block, wrappers stripped."""
+    if rec.get("type") != "assistant":
+        return ""
+    content = rec.get("message", {}).get("content")
+    if not isinstance(content, list):
+        return ""
+    texts = [
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") == "text"
+        and block.get("text")
+    ]
+    return strip_wrappers(texts[-1]) if texts else ""
+
+
+def extract_assistant_notes(
+    records: list[dict],
+    window: Window | None = None,
+    turn_limit: int = ASSISTANT_TURN_CHAR_LIMIT,
+    budget: int = ASSISTANT_NOTES_BUDGET,
+) -> list[str]:
+    """Bounded per-turn assistant prose for narrative context -- NOT a transcript dump.
+
+    The final text block of each assistant turn is where conclusions, decisions and
+    open questions tend to land. Each is truncated to `turn_limit`, and the whole list
+    is capped at `budget` characters so even a huge session stays a paragraph or two.
+    This is topic/discussion signal only; the renderer must never treat it as proof of
+    an outcome (see SKILL.md language rules).
+    """
+    notes: list[str] = []
+    total = 0
+    for rec in records:
+        if window is not None and not _within(record_timestamp(rec), window):
+            continue
+        text = _final_text_block(rec)
+        if not text:
+            continue
+        if len(text) > turn_limit:
+            text = text[:turn_limit] + TRUNCATION_MARKER
+        if total + len(text) > budget:
+            break
+        notes.append(text)
+        total += len(text)
+    return notes
 
 
 def infer_launch(prompts: list[str]) -> str:
@@ -280,7 +394,9 @@ class NullVerifier:
     def verify_ref(self, ref: Ref) -> dict:
         return dict(_UNVERIFIED)
 
-    def commits(self, cwd: str, window: Window) -> list[dict]:
+    def commits(
+        self, cwd: str, window: Window, warn_non_repo: bool = True
+    ) -> list[dict]:
         return []
 
     def repo_for(self, cwd: str) -> str | None:
@@ -357,8 +473,14 @@ class GhVerifier:
             self._emails[repo_root] = out.strip() if out else ""
         return self._emails[repo_root] or None
 
-    def commits(self, cwd: str, window: Window) -> list[dict]:
-        """Les's commits in `cwd`'s repository inside the window."""
+    def commits(
+        self, cwd: str, window: Window, warn_non_repo: bool = True
+    ) -> list[dict]:
+        """Les's commits in `cwd`'s repository inside the window.
+
+        `warn_non_repo=False` for harvested `cd`/`git -C` targets: a stray `cd`
+        into a non-repo directory is expected, not run degradation.
+        """
         if not Path(cwd).exists():
             # A cleaned-up worktree isn't degradation -- there's nothing to
             # warn about, and the parent repo's commits are still collected
@@ -369,7 +491,8 @@ class GhVerifier:
             ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]
         )
         if common is None:
-            self.warnings.append(f"not a git repository, commits skipped: {cwd}")
+            if warn_non_repo:
+                self.warnings.append(f"not a git repository, commits skipped: {cwd}")
             return []
         repo_root = str(Path(common.strip()).parent)
 
@@ -529,11 +652,12 @@ def distill_session(transcript: Transcript, window: Window, verifier) -> dict:
         "prompt_count": len(prompts),
         "prompt_chars_dropped": dropped,
         "prompts": prompts,
+        "assistant_notes": extract_assistant_notes(records, window),
         "refs": [asdict(r) for r in refs],
     }
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_ROOT = Path.home() / ".claude" / "projects"
 
 
@@ -542,6 +666,7 @@ def build_digest(root: Path, window: Window, verifier) -> dict:
     malformed = 0
     dropped = 0
     warnings: list[str] = []
+    harvested: dict[str, None] = {}
 
     for path in discover_transcripts(root):
         try:
@@ -556,6 +681,8 @@ def build_digest(root: Path, window: Window, verifier) -> dict:
 
         session = distill_session(transcript, window, verifier)
         dropped += session["prompt_chars_dropped"]
+        for extra in harvest_dirs(transcript.records):
+            harvested.setdefault(extra, None)
 
         for ref in session["refs"]:
             ref.update(
@@ -581,6 +708,19 @@ def build_digest(root: Path, window: Window, verifier) -> dict:
                     continue
                 seen_shas.add(commit["sha"])
                 commits.append(commit)
+
+    # Directories the sessions cd'd into but never launched from -- their commits
+    # are invisible to the cwd scan above. A stray cd into a non-repo is expected,
+    # so these are scanned quietly (warn_non_repo=False).
+    for cwd in harvested:
+        if cwd in seen_paths:
+            continue
+        seen_paths.add(cwd)
+        for commit in verifier.commits(cwd, window, warn_non_repo=False):
+            if commit["sha"] in seen_shas:
+                continue
+            seen_shas.add(commit["sha"])
+            commits.append(commit)
 
     warnings.extend(verifier.warnings)
 

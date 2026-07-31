@@ -33,3 +33,6 @@ build/
 # Local testing
 test-output/
 .test/
+
+# dev-session worktrees
+.worktrees/
