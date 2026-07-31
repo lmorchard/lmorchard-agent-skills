@@ -847,7 +847,7 @@ DIGEST_TOP_LEVEL_KEYS = {
 SESSION_KEYS = {
     "session_id", "transcript", "title", "project", "cwds", "repo",
     "branches", "launch", "started_at", "ended_at", "prompt_count",
-    "prompt_chars_dropped", "prompts", "refs",
+    "prompt_chars_dropped", "prompts", "assistant_notes", "refs",
 }
 REF_KEYS = {
     "kind", "repo", "number", "source", "url", "verification",
@@ -950,3 +950,205 @@ def test_no_verify_never_touches_subprocess(monkeypatch):
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
     assert digest["schema_version"] == sd.SCHEMA_VERSION
+
+
+# --- Phase 1: harvest cd/git -C dirs so their commits count -------------------
+
+
+def _asst_bash(command):
+    """One assistant record carrying a single Bash tool_use with `command`."""
+    return {
+        "type": "assistant",
+        "isSidechain": False,
+        "message": {"content": [
+            {"type": "tool_use", "name": "Bash", "input": {"command": command}},
+        ]},
+    }
+
+
+def test_harvest_dirs_finds_absolute_cd_and_git_C():
+    recs = [
+        _asst_bash("cd /Users/me/devel/zoo-service && git add -A"),
+        _asst_bash("git -c x=y -C /Users/me/devel/other status"),
+    ]
+    assert sd.harvest_dirs(recs) == [
+        "/Users/me/devel/zoo-service",
+        "/Users/me/devel/other",
+    ]
+
+
+def test_harvest_dirs_dedupes_preserving_order():
+    recs = [
+        _asst_bash("cd /a/one && ls"),
+        _asst_bash("cd /a/two && ls"),
+        _asst_bash("cd /a/one && git commit"),
+    ]
+    assert sd.harvest_dirs(recs) == ["/a/one", "/a/two"]
+
+
+def test_harvest_dirs_ignores_relative_vars_and_node_modules():
+    recs = [
+        _asst_bash('cd zoo-service; cd "$WT/x"; cd /a/node_modules/pkg'),
+        _asst_bash("git -C ../rel status"),
+    ]
+    assert sd.harvest_dirs(recs) == []
+
+
+def test_harvest_dirs_expands_tilde():
+    recs = [_asst_bash("cd ~/devel/thing && ls")]
+    assert sd.harvest_dirs(recs) == [str(Path("~/devel/thing").expanduser())]
+
+
+def test_harvest_dirs_rejects_subcommand_dash_C_and_trailing_deps():
+    recs = [
+        # `-C` as a subcommand option (reuse a commit message), not the dir flag:
+        _asst_bash("git commit -C HEAD~1"),
+        _asst_bash("git commit -C /Users/me/abs/ref -m x"),
+        # node_modules / .git as the final path segment (no trailing slash):
+        _asst_bash("cd /Users/me/proj/node_modules"),
+        _asst_bash("cd /Users/me/proj/.git"),
+    ]
+    assert sd.harvest_dirs(recs) == []
+
+
+def test_harvest_dirs_finds_git_C_after_config_flag():
+    recs = [_asst_bash('git -c user.name=X -C /Users/me/devel/proj status')]
+    assert sd.harvest_dirs(recs) == ["/Users/me/devel/proj"]
+
+
+def test_commits_suppresses_non_repo_warning_when_asked(tmp_path, monkeypatch):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    # rev-parse returns None -> "not a git repository" branch.
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
+    window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
+
+    quiet = sd.GhVerifier()
+    assert quiet.commits(str(plain), window, warn_non_repo=False) == []
+    assert quiet.warnings == []
+
+    loud = sd.GhVerifier()
+    assert loud.commits(str(plain), window) == []
+    assert len(loud.warnings) == 1
+    assert "not a git repository" in loud.warnings[0]
+
+
+def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
+    # A session launched in /launch (which doesn't exist, so its own cwd scan is a
+    # silent no-op) whose Bash `cd`s into a real, remote-less repo where the commit
+    # actually landed. That commit must show up with repo=None and no degraded warning.
+    root = tmp_path / "projects"
+    proj = root / "proj-x"
+    proj.mkdir(parents=True)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    tid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    recs = [
+        {
+            "type": "user", "isSidechain": False, "sessionId": "s1",
+            "gitBranch": "main", "cwd": "/launch",
+            "timestamp": "2026-07-29T12:00:00+00:00",
+            "message": {"role": "user", "content": "build it"},
+        },
+        {
+            "type": "assistant", "isSidechain": False, "cwd": "/launch",
+            "timestamp": "2026-07-29T12:01:00+00:00",
+            "message": {"content": [
+                {"type": "text", "text": "on it"},
+                {"type": "tool_use", "name": "Bash",
+                 "input": {"command": f"cd {work} && git add -A && git commit -m x"}},
+            ]},
+        },
+    ]
+    (proj / f"{tid}.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in recs) + "\n", encoding="utf-8"
+    )
+
+    def fake_run(cmd, timeout=20):
+        if "rev-parse" in cmd:
+            return f"{cmd[cmd.index('-C') + 1]}/.git"
+        if "remote" in cmd:
+            return None  # no origin -> repo None
+        if "config" in cmd:
+            return "me@example.com"
+        if "log" in cmd:
+            if cmd[cmd.index("-C") + 1] == str(work):
+                return "abc1234\x1ffeat: thing\x1f2026-07-29T12:00:00-07:00"
+            return ""
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
+    digest = sd.build_digest(root, window, sd.GhVerifier())
+
+    hits = [c for c in digest["commits"] if c["sha"] == "abc1234"]
+    assert len(hits) == 1
+    assert hits[0]["repo"] is None
+    assert hits[0]["path"] == str(work)
+    assert not any("not a git repository" in w for w in digest["warnings"])
+
+
+# --- Phase 2: bounded assistant-prose narrative signal ------------------------
+
+
+def _asst_text(*blocks, ts="2026-07-28T14:00:00+00:00"):
+    """One assistant record carrying the given content blocks."""
+    return {
+        "type": "assistant", "isSidechain": False, "timestamp": ts,
+        "message": {"content": list(blocks)},
+    }
+
+
+def test_extract_assistant_notes_takes_final_text_block_per_turn():
+    recs = [_asst_text(
+        {"type": "thinking", "thinking": "ignore me"},
+        {"type": "text", "text": "first"},
+        {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}},
+        {"type": "text", "text": "the conclusion"},
+    )]
+    assert sd.extract_assistant_notes(recs) == ["the conclusion"]
+
+
+def test_extract_assistant_notes_skips_turns_without_text():
+    recs = [
+        _asst_text({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}),
+        _asst_text({"type": "thinking", "thinking": "hmm"}),
+        _asst_text({"type": "text", "text": "kept"}),
+    ]
+    assert sd.extract_assistant_notes(recs) == ["kept"]
+
+
+def test_extract_assistant_notes_truncates_and_respects_budget():
+    big = "x" * 5000
+    recs = [_asst_text({"type": "text", "text": big}) for _ in range(3)]
+    notes = sd.extract_assistant_notes(recs, turn_limit=600, budget=1000)
+    assert notes  # at least one captured
+    assert all(n.endswith(sd.TRUNCATION_MARKER) for n in notes)
+    body = sum(len(n) - len(sd.TRUNCATION_MARKER) for n in notes)
+    assert body <= 1000
+
+
+def test_extract_assistant_notes_filters_by_window():
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    recs = [
+        _asst_text({"type": "text", "text": "in"}, ts="2026-07-28T14:00:00+00:00"),
+        _asst_text({"type": "text", "text": "out"}, ts="2026-07-30T14:00:00+00:00"),
+    ]
+    assert sd.extract_assistant_notes(recs, window) == ["in"]
+
+
+def test_distill_session_includes_assistant_notes():
+    session_id = "abababab-cdcd-efef-0101-232323232323"
+    records = [
+        {
+            "type": "user", "isSidechain": False,
+            "timestamp": "2026-07-28T14:00:00+00:00", "sessionId": session_id,
+            "message": {"role": "user", "content": "do it"},
+        },
+        _asst_text({"type": "text", "text": "here is what I concluded"}),
+    ]
+    t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
+    window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
+    got = sd.distill_session(t, window, sd.NullVerifier())
+    assert got["assistant_notes"] == ["here is what I concluded"]
