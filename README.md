@@ -103,6 +103,20 @@ You: "Use the go-cli-builder skill to add an export command to my project"
 - Use existing tools and CLIs where possible
 - Document everything for Claude and humans
 
+### Checks
+
+```bash
+make check     # the full gate: lint + test
+make lint      # ruff check + format check, no writes
+make format    # apply safe lint fixes, then reformat
+make test      # pytest suite (standup-digest)
+```
+
+Linting is [ruff](https://docs.astral.sh/ruff/), pulled in on demand via
+`uvx ruff@0.16.1` — there's nothing to install. Configuration lives in
+`.ruff.toml`; it covers Python scripts only, deliberately excluding Markdown so
+that documentation snippets and archived dev-session notes aren't reformatted.
+
 ### Adding a New Skill
 
 1. Create a new directory for your skill:
@@ -162,7 +176,7 @@ Contributions are welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Test your changes locally
+3. Test your changes locally and confirm `make check` is green
 4. Submit a pull request
 
 ## Related Resources
