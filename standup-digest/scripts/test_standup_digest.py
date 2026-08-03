@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-
 import standup_digest as sd
 
 
@@ -49,9 +48,7 @@ def test_explicit_date_is_one_calendar_day():
 
 
 def test_explicit_since_until_override():
-    w = sd.resolve_window(
-        local(2026, 7, 29), since="2026-07-01", until="2026-07-05"
-    )
+    w = sd.resolve_window(local(2026, 7, 29), since="2026-07-01", until="2026-07-05")
     assert w.since == local(2026, 7, 1)
     assert w.until == local(2026, 7, 5)
     assert w.rule == "explicit"
@@ -94,7 +91,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_uuid_filenames_are_transcripts():
-    assert sd.is_session_transcript(Path("/p/11111111-2222-3333-4444-555555555555.jsonl"))
+    assert sd.is_session_transcript(
+        Path("/p/11111111-2222-3333-4444-555555555555.jsonl")
+    )
     assert not sd.is_session_transcript(Path("/p/notes.jsonl"))
     assert not sd.is_session_transcript(Path("/p/11111111-2222.jsonl"))
 
@@ -106,7 +105,7 @@ def test_subagent_paths_are_excluded():
 
 def test_read_transcript_counts_malformed_lines():
     t = sd.read_transcript(FIXTURES / "11111111-2222-3333-4444-555555555555.jsonl")
-    assert t.malformed == 1          # the deliberate truncated final line
+    assert t.malformed == 1  # the deliberate truncated final line
     assert len(t.records) == 10
 
 
@@ -150,7 +149,9 @@ def test_naive_timestamp_record_is_skipped_not_crashed():
             "message": {"role": "user", "content": "valid prompt"},
         },
     ]
-    t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
+    t = sd.Transcript(
+        path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0
+    )
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
 
     got = sd.distill_session(t, window, sd.NullVerifier())  # must not raise
@@ -249,12 +250,12 @@ def test_extract_prompts_keeps_only_human_mainline_text():
     assert prompts[0].startswith("PR 446 has gotten quite stale")
     assert prompts[1] == "Now resolve the conflicts and close out issue #97."
     joined = " ".join(prompts)
-    assert "sidechain prompt" not in joined      # isSidechain
-    assert "meta prompt" not in joined           # isMeta
-    assert "tool_result" not in joined           # block-list tool payloads
-    assert "LEAKED_TOOL_PAYLOAD" not in joined   # tool_result block's own "text" key
-    assert "outside the window" not in joined    # out of window
-    assert "ignore me" not in joined             # stripped wrapper
+    assert "sidechain prompt" not in joined  # isSidechain
+    assert "meta prompt" not in joined  # isMeta
+    assert "tool_result" not in joined  # block-list tool payloads
+    assert "LEAKED_TOOL_PAYLOAD" not in joined  # tool_result block's own "text" key
+    assert "outside the window" not in joined  # out of window
+    assert "ignore me" not in joined  # stripped wrapper
 
 
 def test_extract_prompts_truncates_and_counts():
@@ -297,7 +298,9 @@ def test_project_label_prefers_recorded_cwd():
 
 
 def test_project_label_falls_back_to_dirname():
-    assert sd.project_label("-Users-lorchard-devel-foo", []) == "Users/lorchard/devel/foo"
+    assert (
+        sd.project_label("-Users-lorchard-devel-foo", []) == "Users/lorchard/devel/foo"
+    )
 
 
 def test_distill_session_collects_metadata():
@@ -346,7 +349,9 @@ def test_distill_session_attributes_launch_from_whole_transcript():
             "message": {"role": "user", "content": "continue the work"},
         },
     ]
-    t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
+    t = sd.Transcript(
+        path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0
+    )
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     got = sd.distill_session(t, window, sd.NullVerifier())
 
@@ -384,7 +389,7 @@ def test_extract_refs_from_bare_hash_uses_default_repo():
     refs = sd.extract_refs([], ["close out issue #97"], default_repo="mozilla/pilo")
     assert refs[0].repo == "mozilla/pilo"
     assert refs[0].number == 97
-    assert refs[0].kind == "issue"      # bare #N is ambiguous; assume issue
+    assert refs[0].kind == "issue"  # bare #N is ambiguous; assume issue
     assert refs[0].source == "prose"
 
 
@@ -396,7 +401,10 @@ def test_dedupe_prefers_pr_link_over_prose():
     refs = [
         sd.Ref(kind="pr", repo="mozilla/pilo", number=446, source="prose", url=None),
         sd.Ref(
-            kind="pr", repo="mozilla/pilo", number=446, source="pr-link",
+            kind="pr",
+            repo="mozilla/pilo",
+            number=446,
+            source="pr-link",
             url="https://github.com/mozilla/pilo/pull/446",
         ),
     ]
@@ -482,8 +490,10 @@ def test_distill_session_attaches_bare_hash_to_resolved_repo(monkeypatch):
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     refs = sd.distill_session(t, window, sd.GhVerifier())["refs"]
     assert any(
-        r["number"] == 97 and r["kind"] == "issue"
-        and r["repo"] == "mozilla/pilo" and r["source"] == "prose"
+        r["number"] == 97
+        and r["kind"] == "issue"
+        and r["repo"] == "mozilla/pilo"
+        and r["source"] == "prose"
         for r in refs
     )
 
@@ -549,7 +559,7 @@ def test_gh_verifier_repo_for_delegates_and_caches(monkeypatch):
     v = sd.GhVerifier()
     assert v.repo_for("/repo") == "mozilla/pilo"
     assert v.repo_for("/repo") == "mozilla/pilo"
-    assert len(calls) == 1   # cached by cwd on repeat lookups
+    assert len(calls) == 1  # cached by cwd on repeat lookups
 
 
 def test_gh_verifier_confirms_merged_pr(monkeypatch):
@@ -581,10 +591,16 @@ def test_gh_verifier_requests_pr_and_issue_field_lists_separately(monkeypatch):
     monkeypatch.setattr(sd, "_run", fake_run)
     v = sd.GhVerifier()
 
-    pr_ref = sd.Ref(kind="pr", repo="mozilla/pilo", number=446, source="pr-link", url=None)
+    pr_ref = sd.Ref(
+        kind="pr", repo="mozilla/pilo", number=446, source="pr-link", url=None
+    )
     v.verify_ref(pr_ref)
     issue_ref = sd.Ref(
-        kind="issue", repo="Mozilla-Ocho/pilo-evals-judge", number=97, source="prose", url=None
+        kind="issue",
+        repo="Mozilla-Ocho/pilo-evals-judge",
+        number=97,
+        source="prose",
+        url=None,
     )
     v.verify_ref(issue_ref)
 
@@ -609,7 +625,11 @@ def test_gh_verifier_confirms_closed_issue(monkeypatch):
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: json.dumps(payload))
     v = sd.GhVerifier()
     ref = sd.Ref(
-        kind="issue", repo="Mozilla-Ocho/pilo-evals-judge", number=97, source="prose", url=None
+        kind="issue",
+        repo="Mozilla-Ocho/pilo-evals-judge",
+        number=97,
+        source="prose",
+        url=None,
     )
     got = v.verify_ref(ref)
 
@@ -651,7 +671,7 @@ def test_gh_verifier_caches_repeat_lookups(monkeypatch):
     v.verify_ref(ref)
     v.verify_ref(ref)
     assert len(calls) == 1
-    assert v.gh_calls == 1      # surfaced as stats.gh_calls in the digest
+    assert v.gh_calls == 1  # surfaced as stats.gh_calls in the digest
 
 
 def test_commits_parses_git_log(monkeypatch):
@@ -702,7 +722,9 @@ def test_commits_scopes_author_email_per_repo(tmp_path, monkeypatch):
         if "config" in cmd:
             config_calls.append(cmd)
             repo_dir = cmd[cmd.index("-C") + 1]
-            return "work@mozilla.com" if repo_dir == str(work) else "personal@example.com"
+            return (
+                "work@mozilla.com" if repo_dir == str(work) else "personal@example.com"
+            )
         if "log" in cmd:
             log_cmds.append(cmd)
             return ""
@@ -716,8 +738,8 @@ def test_commits_scopes_author_email_per_repo(tmp_path, monkeypatch):
     v.commits(str(personal), window)
     v.commits(str(work), window)  # repeat: must hit the full per-repo commits cache
 
-    assert len(config_calls) == 2   # one lookup per distinct repo, not per call
-    assert len(log_cmds) == 2       # git log deduped by repo_root, not re-run on repeat
+    assert len(config_calls) == 2  # one lookup per distinct repo, not per call
+    assert len(log_cmds) == 2  # git log deduped by repo_root, not re-run on repeat
     assert "--author=work@mozilla.com" in log_cmds[0]
     assert "--author=personal@example.com" in log_cmds[1]
 
@@ -823,13 +845,18 @@ def test_build_digest_over_fixtures_no_verify():
     assert digest["schema_version"] == sd.SCHEMA_VERSION
     assert digest["window"]["rule"] == "explicit"
     assert digest["stats"]["malformed_lines"] == 1
-    assert digest["stats"]["gh_calls"] == 0      # --no-verify makes no calls
+    assert digest["stats"]["gh_calls"] == 0  # --no-verify makes no calls
     assert digest["warnings"], "a --no-verify run must announce degradation"
-    assert digest["commits"] == []               # NullVerifier never collects commits
+    assert digest["commits"] == []  # NullVerifier never collects commits
 
 
 def test_build_digest_applies_verification_to_refs(monkeypatch):
-    payload = {"state": "MERGED", "title": "t", "url": "u", "mergedAt": "2026-07-28T18:22:11Z"}
+    payload = {
+        "state": "MERGED",
+        "title": "t",
+        "url": "u",
+        "mergedAt": "2026-07-28T18:22:11Z",
+    }
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: json.dumps(payload))
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     digest = sd.build_digest(FIXTURES.parent, window, sd.GhVerifier())
@@ -841,17 +868,42 @@ def test_build_digest_applies_verification_to_refs(monkeypatch):
 
 
 DIGEST_TOP_LEVEL_KEYS = {
-    "schema_version", "generated_at", "window", "stats", "warnings",
-    "sessions", "commits",
+    "schema_version",
+    "generated_at",
+    "window",
+    "stats",
+    "warnings",
+    "sessions",
+    "commits",
 }
 SESSION_KEYS = {
-    "session_id", "transcript", "title", "project", "cwds", "repo",
-    "branches", "launch", "started_at", "ended_at", "prompt_count",
-    "prompt_chars_dropped", "prompts", "assistant_notes", "refs",
+    "session_id",
+    "transcript",
+    "title",
+    "project",
+    "cwds",
+    "repo",
+    "branches",
+    "launch",
+    "started_at",
+    "ended_at",
+    "prompt_count",
+    "prompt_chars_dropped",
+    "prompts",
+    "assistant_notes",
+    "refs",
 }
 REF_KEYS = {
-    "kind", "repo", "number", "source", "url", "verification",
-    "state", "title", "merged_at", "closed_at",
+    "kind",
+    "repo",
+    "number",
+    "source",
+    "url",
+    "verification",
+    "state",
+    "title",
+    "merged_at",
+    "closed_at",
 }
 COMMIT_KEYS = {"repo", "path", "sha", "subject", "committed_at"}
 
@@ -866,13 +918,15 @@ def test_digest_matches_documented_schema(monkeypatch):
 
     def fake_run(cmd, timeout=20):
         if cmd[0] == "gh":
-            return json.dumps({
-                "state": "MERGED",
-                "title": "t",
-                "url": "https://github.com/mozilla/pilo/pull/446",
-                "mergedAt": "2026-07-28T18:22:11Z",
-                "closedAt": "2026-07-28T18:22:11Z",
-            })
+            return json.dumps(
+                {
+                    "state": "MERGED",
+                    "title": "t",
+                    "url": "https://github.com/mozilla/pilo/pull/446",
+                    "mergedAt": "2026-07-28T18:22:11Z",
+                    "closedAt": "2026-07-28T18:22:11Z",
+                }
+            )
         if "rev-parse" in cmd:
             return "/Users/lorchard/devel/tabs-project/pilo/.git"
         if "remote" in cmd:
@@ -913,10 +967,13 @@ def test_main_writes_json_to_out(tmp_path, monkeypatch):
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
     code = sd.main(
         [
-            "--date", "2026-07-28",
+            "--date",
+            "2026-07-28",
             "--no-verify",
-            "--root", str(FIXTURES.parent),
-            "--out", str(out),
+            "--root",
+            str(FIXTURES.parent),
+            "--out",
+            str(out),
         ]
     )
     assert code == 0
@@ -960,9 +1017,11 @@ def _asst_bash(command):
     return {
         "type": "assistant",
         "isSidechain": False,
-        "message": {"content": [
-            {"type": "tool_use", "name": "Bash", "input": {"command": command}},
-        ]},
+        "message": {
+            "content": [
+                {"type": "tool_use", "name": "Bash", "input": {"command": command}},
+            ]
+        },
     }
 
 
@@ -1012,7 +1071,7 @@ def test_harvest_dirs_rejects_subcommand_dash_C_and_trailing_deps():
 
 
 def test_harvest_dirs_finds_git_C_after_config_flag():
-    recs = [_asst_bash('git -c user.name=X -C /Users/me/devel/proj status')]
+    recs = [_asst_bash("git -c user.name=X -C /Users/me/devel/proj status")]
     assert sd.harvest_dirs(recs) == ["/Users/me/devel/proj"]
 
 
@@ -1046,19 +1105,31 @@ def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
     tid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     recs = [
         {
-            "type": "user", "isSidechain": False, "sessionId": "s1",
-            "gitBranch": "main", "cwd": "/launch",
+            "type": "user",
+            "isSidechain": False,
+            "sessionId": "s1",
+            "gitBranch": "main",
+            "cwd": "/launch",
             "timestamp": "2026-07-29T12:00:00+00:00",
             "message": {"role": "user", "content": "build it"},
         },
         {
-            "type": "assistant", "isSidechain": False, "cwd": "/launch",
+            "type": "assistant",
+            "isSidechain": False,
+            "cwd": "/launch",
             "timestamp": "2026-07-29T12:01:00+00:00",
-            "message": {"content": [
-                {"type": "text", "text": "on it"},
-                {"type": "tool_use", "name": "Bash",
-                 "input": {"command": f"cd {work} && git add -A && git commit -m x"}},
-            ]},
+            "message": {
+                "content": [
+                    {"type": "text", "text": "on it"},
+                    {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {
+                            "command": f"cd {work} && git add -A && git commit -m x"
+                        },
+                    },
+                ]
+            },
         },
     ]
     (proj / f"{tid}.jsonl").write_text(
@@ -1095,18 +1166,22 @@ def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
 def _asst_text(*blocks, ts="2026-07-28T14:00:00+00:00"):
     """One assistant record carrying the given content blocks."""
     return {
-        "type": "assistant", "isSidechain": False, "timestamp": ts,
+        "type": "assistant",
+        "isSidechain": False,
+        "timestamp": ts,
         "message": {"content": list(blocks)},
     }
 
 
 def test_extract_assistant_notes_takes_final_text_block_per_turn():
-    recs = [_asst_text(
-        {"type": "thinking", "thinking": "ignore me"},
-        {"type": "text", "text": "first"},
-        {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}},
-        {"type": "text", "text": "the conclusion"},
-    )]
+    recs = [
+        _asst_text(
+            {"type": "thinking", "thinking": "ignore me"},
+            {"type": "text", "text": "first"},
+            {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}},
+            {"type": "text", "text": "the conclusion"},
+        )
+    ]
     assert sd.extract_assistant_notes(recs) == ["the conclusion"]
 
 
@@ -1142,13 +1217,17 @@ def test_distill_session_includes_assistant_notes():
     session_id = "abababab-cdcd-efef-0101-232323232323"
     records = [
         {
-            "type": "user", "isSidechain": False,
-            "timestamp": "2026-07-28T14:00:00+00:00", "sessionId": session_id,
+            "type": "user",
+            "isSidechain": False,
+            "timestamp": "2026-07-28T14:00:00+00:00",
+            "sessionId": session_id,
             "message": {"role": "user", "content": "do it"},
         },
         _asst_text({"type": "text", "text": "here is what I concluded"}),
     ]
-    t = sd.Transcript(path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0)
+    t = sd.Transcript(
+        path=Path(f"/tmp/{session_id}.jsonl"), records=records, malformed=0
+    )
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
     got = sd.distill_session(t, window, sd.NullVerifier())
     assert got["assistant_notes"] == ["here is what I concluded"]

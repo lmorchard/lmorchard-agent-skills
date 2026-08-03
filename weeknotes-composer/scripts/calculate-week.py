@@ -21,32 +21,36 @@ def calculate_week_info(date=None):
     if date is None:
         date = datetime.now()
     elif isinstance(date, str):
-        date = datetime.strptime(date, '%Y-%m-%d')
+        date = datetime.strptime(date, "%Y-%m-%d")
 
     week_number = date.isocalendar()[1]
     year = date.year
-    date_str = date.strftime('%Y-%m-%d')
+    date_str = date.strftime("%Y-%m-%d")
     slug = f"{date_str}-w{week_number:02d}"
 
     return {
-        'date': date_str,
-        'year': year,
-        'week': week_number,
-        'slug': slug,
-        'directory': f"content/posts/{year}/{slug}",
-        'filename': f"content/posts/{year}/{slug}/index.md",
+        "date": date_str,
+        "year": year,
+        "week": week_number,
+        "slug": slug,
+        "directory": f"content/posts/{year}/{slug}",
+        "filename": f"content/posts/{year}/{slug}/index.md",
         # The real title leads with a content-derived phrase the script can't
         # know; compose it as "{descriptive lead} {week_marker}". `title` is the
         # bare fallback for grab-bag weeks with no single dominant thread.
-        'week_marker': f"(Week {week_number})",
-        'title': f"{year} Week {week_number}",
+        "week_marker": f"(Week {week_number})",
+        "title": f"{year} Week {week_number}",
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Calculate weeknotes week number and filename')
-    parser.add_argument('--date', type=str, help='Date in YYYY-MM-DD format (default: today)')
-    parser.add_argument('--json', action='store_true', help='Output as JSON')
+    parser = argparse.ArgumentParser(
+        description="Calculate weeknotes week number and filename"
+    )
+    parser.add_argument(
+        "--date", type=str, help="Date in YYYY-MM-DD format (default: today)"
+    )
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
 
@@ -54,6 +58,7 @@ def main():
 
     if args.json:
         import json
+
         print(json.dumps(info, indent=2))
     else:
         print(f"Date:        {info['date']}")
@@ -64,5 +69,5 @@ def main():
         print(f"Filename:    {info['filename']}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

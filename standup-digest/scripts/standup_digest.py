@@ -17,9 +17,7 @@ from pathlib import Path
 
 MONDAY = 0
 
-UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-)
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 @dataclass(frozen=True)
@@ -286,9 +284,7 @@ def _final_text_block(rec: dict) -> str:
     texts = [
         block.get("text", "")
         for block in content
-        if isinstance(block, dict)
-        and block.get("type") == "text"
-        and block.get("text")
+        if isinstance(block, dict) and block.get("type") == "text" and block.get("text")
     ]
     return strip_wrappers(texts[-1]) if texts else ""
 
@@ -344,7 +340,7 @@ def project_label(dirname: str, cwds: list[str] | None = None) -> str:
             base = base.split("/.worktrees/")[0]
         for prefix in (f"{home}/devel/", f"{home}/"):
             if base.startswith(prefix):
-                return base[len(prefix):]
+                return base[len(prefix) :]
         return base
     return dirname.replace("-", "/").lstrip("/")
 
@@ -353,9 +349,7 @@ def _distinct(values) -> list[str]:
     return list(dict.fromkeys(v for v in values if v))
 
 
-_GH_URL_RE = re.compile(
-    r"https?://github\.com/([\w.-]+/[\w.-]+)/(pull|issues)/(\d+)"
-)
+_GH_URL_RE = re.compile(r"https?://github\.com/([\w.-]+/[\w.-]+)/(pull|issues)/(\d+)")
 
 
 def _run(cmd: list[str], timeout: int = 20) -> str | None:
@@ -438,9 +432,14 @@ class GhVerifier:
         self.gh_calls += 1
         raw = _run(
             [
-                "gh", noun, "view", str(ref.number),
-                "--repo", ref.repo,
-                "--json", fields,
+                "gh",
+                noun,
+                "view",
+                str(ref.number),
+                "--repo",
+                ref.repo,
+                "--json",
+                fields,
             ]
         )
         if raw is None:
@@ -461,7 +460,9 @@ class GhVerifier:
                 if data.get("url"):
                     result["url"] = data["url"]
             except (json.JSONDecodeError, AttributeError):
-                self.warnings.append(f"gh returned unparseable JSON for {ref.repo}#{ref.number}")
+                self.warnings.append(
+                    f"gh returned unparseable JSON for {ref.repo}#{ref.number}"
+                )
                 result = dict(_UNVERIFIED)
 
         self._ref_cache[key] = result
@@ -488,7 +489,14 @@ class GhVerifier:
             return []
 
         common = _run(
-            ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]
+            [
+                "git",
+                "-C",
+                cwd,
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ]
         )
         if common is None:
             if warn_non_repo:
@@ -504,11 +512,15 @@ class GhVerifier:
             self.warnings.append("git user.email unset; commit authorship not filtered")
 
         cmd = [
-            "git", "-C", repo_root, "log",
+            "git",
+            "-C",
+            repo_root,
+            "log",
             f"--since={window.since.isoformat()}",
             f"--until={window.until.isoformat()}",
             f"--pretty=format:%h{GIT_LOG_SEP}%s{GIT_LOG_SEP}%cI",
-            "--all", "--no-merges",
+            "--all",
+            "--no-merges",
         ]
         if email:
             cmd.append(f"--author={email}")
@@ -547,10 +559,10 @@ _BARE_REF_RE = re.compile(r"(?<![\w/#])#(\d+)\b")
 
 @dataclass(frozen=True)
 class Ref:
-    kind: str            # "pr" | "issue"
+    kind: str  # "pr" | "issue"
     repo: str | None
     number: int
-    source: str          # "pr-link" | "prose"
+    source: str  # "pr-link" | "prose"
     url: str | None
 
 
@@ -616,9 +628,7 @@ def dedupe_refs(refs: list[Ref]) -> list[Ref]:
     for ref in refs:
         key = (ref.repo, ref.kind, ref.number)
         current = best.get(key)
-        if current is None or (
-            current.source == "prose" and ref.source == "pr-link"
-        ):
+        if current is None or (current.source == "prose" and ref.source == "pr-link"):
             best[key] = ref
     return sorted(best.values(), key=lambda r: (r.repo or "", r.kind, r.number))
 
@@ -688,8 +698,11 @@ def build_digest(root: Path, window: Window, verifier) -> dict:
             ref.update(
                 verifier.verify_ref(
                     Ref(
-                        kind=ref["kind"], repo=ref["repo"], number=ref["number"],
-                        source=ref["source"], url=ref["url"],
+                        kind=ref["kind"],
+                        repo=ref["repo"],
+                        number=ref["number"],
+                        source=ref["source"],
+                        url=ref["url"],
                     )
                 )
             )

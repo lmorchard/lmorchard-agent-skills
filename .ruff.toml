@@ -1,0 +1,31 @@
+# ruff configuration for lmorchard-agent-skills.
+#
+# Scope: Python scripts only. `ruff format` also rewrites Python code blocks
+# embedded in Markdown. Left unrestricted it would rewrite SKILL.md documentation
+# (whose snippets are illustrative and not always valid Python) and the archived
+# docs/dev-sessions/**/plan.md and notes.md session artifacts, which are a
+# historical record rather than maintained code.
+extend-exclude = ["*.md"]
+
+# Pinned rather than inherited. There is no pyproject.toml for ruff to read a
+# requires-python from, and its fallback default can move between releases.
+# py310 is the lowest version that gives the full modern-syntax rewrite set:
+# at py39, UP006 stops being auto-fixable and UP045 stops firing entirely.
+target-version = "py310"
+
+[lint]
+# Pinned rather than inherited. Stock ruff defaults are broader than the
+# documented E4/E7/E9/F set and shift between releases, so an inherited default
+# is a gate that moves underneath you on upgrade.
+#   E4/E7/E9 - pycodestyle errors (import placement, statements, syntax)
+#   F        - pyflakes (undefined names, unused imports and variables)
+#   I        - isort (import ordering)
+#   UP       - pyupgrade (modern syntax for the target version)
+select = ["E4", "E7", "E9", "F", "I", "UP"]
+
+[lint.per-file-ignores]
+# This test module sets TZ=UTC and calls time.tzset() before importing datetime,
+# so the timezone-sensitive window tests are deterministic regardless of the
+# machine's local zone. The imports below that setup cannot be hoisted above it,
+# which is exactly what E402 flags.
+"standup-digest/scripts/test_standup_digest.py" = ["E402"]
