@@ -3,6 +3,11 @@ A less aspirational cousin of [[things I might do]]
 # intake
 
 - [ ] check out [thing](https://example.com/thing)
+- [ ] a fresh idea with an aside
+
+an aside about scope that belongs to neither idea
+
+- [ ] another idea
 
 # tier 1 — small enough to finish in one sitting
 

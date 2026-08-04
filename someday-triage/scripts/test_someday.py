@@ -398,3 +398,114 @@ def test_flag_then_remove_in_one_plan_leaves_no_flag(tmp_path, monkeypatch):
     doc2, _ = someday.load(src)
     item2 = next(i for s in doc2.sections for i in s.items if i.origin == origin)
     assert someday.is_flagged(item2) is False
+
+
+PLACEABLE = """# intake
+
+- [ ] a fresh idea
+
+# tier 1 — quick
+
+## blog & site
+
+- [ ] existing thing
+"""
+
+
+def test_place_moves_item_into_cluster(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, PLACEABLE)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "tier 1 — quick",
+                "cluster": "blog & site",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan)]) == 0
+    out = src.read_text()
+    intake_body = out.split("# tier 1")[0]
+    assert "a fresh idea" not in intake_body
+    assert out.index("existing thing") < out.index("a fresh idea")
+
+
+def test_place_rejects_unknown_cluster(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, PLACEABLE)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "tier 1 — quick",
+                "cluster": "nonexistent",
+            }
+        ],
+    )
+    before = src.read_text()
+    assert someday.main(["apply", str(plan)]) != 0
+    assert "nonexistent" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_place_creates_cluster_when_allowed(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, PLACEABLE)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "tier 1 — quick",
+                "cluster": "brand new",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan), "--allow-new-clusters"]) == 0
+    out = src.read_text()
+    assert "## brand new" in out
+    assert out.index("## brand new") < out.index("a fresh idea")
+
+
+def test_place_leaves_interstitial_tail_behind_in_source_section(tmp_path, monkeypatch):
+    # The moved item ("a fresh idea with an aside") has a non-blank tail --
+    # interstitial prose sitting between it and the next intake item. That
+    # prose is section context, not part of the item, so a move must leave
+    # it behind (appended to the preceding item's tail) rather than carrying
+    # it along to the destination.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, (FIXTURES / "sample.md").read_text())
+    doc, _ = someday.load(src)
+    intake = doc.sections[0]
+    target = next(i for i in intake.items if i.text == "a fresh idea with an aside").id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "tier 1 — small enough to finish in one sitting",
+                "cluster": "blog & site",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan)]) == 0
+    out = src.read_text()
+    intake_body = out.split("# tier 1")[0]
+    aside = "an aside about scope that belongs to neither idea"
+    assert "a fresh idea with an aside" not in intake_body
+    assert aside in intake_body
+    assert "another idea" in intake_body
+    assert out.index("## blog & site") < out.index("a fresh idea with an aside")

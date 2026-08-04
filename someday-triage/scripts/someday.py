@@ -305,6 +305,72 @@ def apply_flag(item: Item, question: str, remove: bool, today: str) -> None:
     item.dirty = True
 
 
+def find_section(
+    doc: Document, bucket: str, cluster: str | None, allow_new: bool
+) -> Section:
+    """Locate the tier bucket (level-1) named `bucket`, then within it the
+    cluster (level-2) named `cluster`. Matching is by exact title string --
+    no fuzzy matching, no case folding. A missing bucket is always an error;
+    tiers are a fixed taxonomy. A missing cluster is an error unless
+    `allow_new`, in which case one is created at the end of the bucket's
+    cluster run (just before the next level-1 heading), so a new cluster
+    never jumps ahead of existing ones.
+    """
+    bucket_idx = next(
+        (n for n, s in enumerate(doc.sections) if s.level == 1 and s.title == bucket),
+        None,
+    )
+    if bucket_idx is None:
+        raise PlanError(f"unknown bucket: {bucket}")
+    if cluster is None:
+        return doc.sections[bucket_idx]
+
+    for section in doc.sections[bucket_idx + 1 :]:
+        if section.level == 1:
+            break
+        if section.title == cluster:
+            return section
+
+    if not allow_new:
+        raise PlanError(
+            f"unknown cluster: {cluster} (use --allow-new-clusters to create it)"
+        )
+
+    insert_at = bucket_idx + 1
+    while insert_at < len(doc.sections) and doc.sections[insert_at].level != 1:
+        insert_at += 1
+    created = Section(level=2, title=cluster, raw_heading=f"## {cluster}", body=[""])
+    doc.sections.insert(insert_at, created)
+    return created
+
+
+def apply_place(
+    doc: Document, item: Item, bucket: str, cluster: str | None, allow_new: bool
+) -> None:
+    """Move `item` out of its current section into the bucket/cluster named.
+    The item keeps its `origin` (identity) and `dirty` stays False, so its
+    original lines are emitted verbatim in the new location -- moving must
+    not rewrite text. `item.tail` is section context (interstitial prose or
+    blank padding) that happens to sit after this item, not part of the
+    item, so it does not travel: it is left behind in the source section,
+    appended to the preceding item's tail, or -- if the moved item was
+    first in its section -- to the section's body. The destination gets the
+    item with an empty tail of its own.
+    """
+    for section in doc.sections:
+        if item in section.items:
+            idx = section.items.index(item)
+            if item.tail:
+                if idx > 0:
+                    section.items[idx - 1].tail.extend(item.tail)
+                else:
+                    section.body.extend(item.tail)
+                item.tail = []
+            section.items.remove(item)
+            break
+    find_section(doc, bucket, cluster, allow_new).items.append(item)
+
+
 IN_PLACE_OPS = {"annotate", "retitle", "flag"}
 
 
@@ -347,11 +413,15 @@ def cmd_apply(args) -> int:
 
         for op in ops:
             kind = op["op"]
-            if kind not in IN_PLACE_OPS:
+            if kind not in IN_PLACE_OPS and kind != "place":
                 print(f"unsupported op: {kind}", file=sys.stderr)
                 return 2
             item = items[op["item"]]
-            if kind == "annotate":
+            if kind == "place":
+                apply_place(
+                    doc, item, op["bucket"], op.get("cluster"), args.allow_new_clusters
+                )
+            elif kind == "annotate":
                 apply_annotate(item, op["notes"])
             elif kind == "retitle":
                 apply_retitle(item, op["text"])
@@ -360,7 +430,10 @@ def cmd_apply(args) -> int:
     except json.JSONDecodeError as e:
         print(f"invalid plan JSON: {e}", file=sys.stderr)
         return 2
-    except (PlanError, KeyError, TypeError, AttributeError) as e:
+    except PlanError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except (KeyError, TypeError, AttributeError) as e:
         print(f"malformed plan: {e}", file=sys.stderr)
         return 2
 
@@ -420,6 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("plan")
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--today", default="", help="override date (testing)")
+    p_apply.add_argument("--allow-new-clusters", action="store_true")
     p_apply.set_defaults(func=cmd_apply)
 
     return parser
