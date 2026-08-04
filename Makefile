@@ -44,8 +44,18 @@ check: lint test
 #
 # `link` refuses to replace a real directory: that would mean deleting a skill
 # that came from somewhere else, which is not this target's call to make.
+#
+# It first prunes links that point into this repo at a path that no longer
+# exists. Renaming a skill orphans its old link, and `unlink` can't help because
+# the old name is gone from SKILLS by then.
 link:
 	@mkdir -p "$(SKILLS_DIR)"
+	@for dest in "$(SKILLS_DIR)"/*; do \
+	  [ -L "$$dest" ] || continue; \
+	  target="`readlink "$$dest"`"; \
+	  case "$$target" in "$(CURDIR)/"*) ;; *) continue ;; esac; \
+	  [ -e "$$target" ] || { rm "$$dest" && echo "  prune `basename "$$dest"` (was -> $$target)"; }; \
+	done
 	@for s in $(SKILLS); do \
 	  dest="$(SKILLS_DIR)/$$s"; \
 	  if [ -e "$$dest" ] && [ ! -L "$$dest" ]; then \
