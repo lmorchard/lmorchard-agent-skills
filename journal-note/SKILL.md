@@ -54,7 +54,6 @@ When unsure which: a paragraph's worth of story → `# notes`; a single fact or 
 - lowercase `##` headings; terse bullets; first-person lowercase prose ("i ran…")
 - `[[wikilinks]]` for projects, tools, people, entities
 - nest detail with tab indents
-- `*(blog candidate)*` italic tag under the heading when relevant
 - blog-seed depth: enough to reconstruct the story weeks later, not a bare one-liner
 
 ## Common mistakes
