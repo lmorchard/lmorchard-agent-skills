@@ -1364,6 +1364,12 @@ git commit -m "feat(someday-triage): archive and merge with cross-file reconcili
 
 Uses `difflib.SequenceMatcher` on normalized text. The threshold has to survive a hard negative case: "Led strip for under bar" and "Led strip for above sink" are about 90% similar as strings and must not group.
 
+> **AMENDED 2026-08-04 during implementation — read this before the steps below.** The step-by-step tests in this task originally required the `logotron` ×3 cluster to group. **That is not achievable with this metric**, proved analytically during implementation: the true-duplicate logotron pair scores **0.4304** while the unrelated under-bar/above-sink pair scores **0.4858**. The true duplicate scores *lower* than the false one, so no threshold separates them. `SequenceMatcher` rewards surface form, which is exactly the misleading signal here; closing the gap needs corpus-wide term-rarity weighting.
+>
+> The specification was narrowed rather than the metric chased: **`dupes` is a near-verbatim duplicate detector.** Positives to test are byte-identical texts and case/punctuation variants (e.g. "Led strip for under bar" vs "led strip for UNDER bar"). The hard negative stays. A further test pins the logotron trio as *not* grouping, commented as a documented limitation so nobody later assumes paraphrase detection works.
+>
+> Rationale: most real duplicate clusters in this file were verbatim repeats; the paraphrased ones were found by a human reading the list. An over-eager detector proposes merging unrelated items, which is a worse failure than a recall gap. Paraphrase detection is the model's job — Task 9's `SKILL.md` must state that in writing.
+
 - [ ] **Step 1: Write the failing tests, negative case first**
 
 ```python
@@ -1496,7 +1502,7 @@ Register:
     p_dupes.set_defaults(func=cmd_dupes)
 ```
 
-The Jaccard term on content words is what separates the two cases: the logotron items share `logotron`, `working`, `docker`, while under-bar and above-sink share only `led`, `strip`, and differ on the words that carry the meaning. Pure `SequenceMatcher` cannot make that distinction.
+**This claim was tested and is false** — kept here because the reasoning is instructive. The intent was that Jaccard on content words would separate the cases: the logotron items share `logotron`, `working`, `docker`, while under-bar and above-sink share only `led`, `strip`. In practice both pairs land at the same Jaccard (2 shared of 6 union), and averaging in `SequenceMatcher` then *favours* the false pair because its strings are structurally alike. Measured: logotron 0.4304, LED 0.4858. See the amendment note at the top of this task.
 
 - [ ] **Step 4: Run and confirm pass; tune only if needed**
 

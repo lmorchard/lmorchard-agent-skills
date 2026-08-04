@@ -167,7 +167,7 @@ Fixtures are drawn from the real file, which is where the useful edge cases are.
 - Nested notes indented with tabs and with spaces; wikilinks containing pipes and brackets; `- [x]` items; non-checkbox bullets; sub-bullets that are themselves checkboxes; headings containing em-dashes.
 
 **Duplicate detection**
-- Positives from known answers: `logotron` ×3, spotify export ×3, fediverse webrings ×3.
+- Positives: **near-verbatim only** — byte-identical texts and case/punctuation variants. Amended 2026-08-04: the `logotron` ×3 and spotify ×3 clusters are *paraphrased* duplicates and are provably out of reach for this metric (the true logotron pair scores 0.4304 versus the unrelated LED pair's 0.4858, so no threshold separates them). `dupes` is specified as a near-verbatim detector; a test pins the logotron trio as not grouping, and the model owns paraphrase detection.
 - **Hard negative:** "Led strip for under bar" vs "Led strip for above sink" — ~90% string similarity, must not merge. This test is the one that keeps the threshold honest.
 
 **Safety**
