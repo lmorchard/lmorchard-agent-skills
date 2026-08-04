@@ -366,6 +366,63 @@ def cmd_lint(args) -> int:
     return 0
 
 
+def distinctive_terms(item: Item, corpus_counts: dict[str, int]) -> list[str]:
+    """The item's rarest content words -- rare words identify a topic;
+    common ones (shared across many open items) do not. Ties broken toward
+    longer words. Used by done-check (Task 8) to pick the terms a match is
+    scored against."""
+    words = [w for w in content_words(item.text) if len(w) > 3]
+    words.sort(key=lambda w: (corpus_counts.get(w, 0), -len(w)))
+    return words[:3]
+
+
+def find_already_done(doc: Document, haystacks: list[str]) -> list[dict]:
+    """Nominate open items whose distinctive terms turn up in `haystacks`
+    (the archive plus any extra repos). Tuned for recall over precision: a
+    false positive costs one glance, but the false negative this guards
+    against -- a finished item left open for months because nobody re-read
+    the archive -- is expensive. Matching at least `len(terms) - 1` (never
+    fewer than 2) rather than requiring all terms lets an item with a
+    slightly reworded blog post title still surface."""
+    items = open_items(doc)
+    counts: dict[str, int] = {}
+    for item in items:
+        for word in content_words(item.text):
+            counts[word] = counts.get(word, 0) + 1
+    blob = "\n".join(haystacks).lower()
+    hits = []
+    for item in items:
+        terms = distinctive_terms(item, counts)
+        if not terms:
+            continue
+        matched = [t for t in terms if t in blob]
+        if len(matched) >= max(2, len(terms) - 1):
+            hits.append({"id": item.id, "text": item.text, "matched": matched})
+    return hits
+
+
+def cmd_done_check(args) -> int:
+    doc, _ = load(source_path())
+    haystacks = []
+    if archive_path().exists():
+        haystacks.append(archive_path().read_text(encoding="utf-8"))
+    for root in args.repos:
+        for path in Path(root).rglob("*.md"):
+            if ".git" in path.parts or "node_modules" in path.parts:
+                continue
+            try:
+                haystacks.append(path.read_text(encoding="utf-8", errors="ignore"))
+            except OSError:
+                continue
+    candidates = find_already_done(doc, haystacks)
+    if args.json:
+        print(json.dumps({"candidates": candidates}, indent=2))
+    else:
+        for hit in candidates:
+            print(f"{hit['id']}  {hit['text']}  (matched: {', '.join(hit['matched'])})")
+    return 0
+
+
 def cmd_status(args) -> int:
     doc, text = load(source_path())
     buckets: dict[str, int] = {}
@@ -802,6 +859,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_lint.add_argument("--stale-days", type=int, default=180)
     p_lint.add_argument("--today", default="")
     p_lint.set_defaults(func=cmd_lint)
+
+    p_done = sub.add_parser("done-check", help="items that may already be finished")
+    p_done.add_argument("--repos", nargs="*", default=[])
+    p_done.add_argument("--json", action="store_true")
+    p_done.set_defaults(func=cmd_done_check)
 
     return parser
 

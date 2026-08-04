@@ -1158,3 +1158,37 @@ def test_lint_cli_json_output(tmp_path, monkeypatch, capsys):
         "stale",
     }
     assert any("2026-09-14" in f["text"] for f in data["dated"])
+
+
+def test_done_check_finds_item_present_in_archive(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n- [ ] build a mermaid rendering web component for my blog\n- [ ] something entirely unrelated to anything\n",
+    )
+    _seed(
+        tmp_path,
+        "- [x] Wrapping Mermaid Diagrams in a Web Component\n",
+        "someday-done.md",
+    )
+    rc = someday.main(["done-check", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    texts = [c["text"] for c in data["candidates"]]
+    assert "build a mermaid rendering web component for my blog" in texts
+    assert "something entirely unrelated to anything" not in texts
+
+
+def test_done_check_searches_extra_dirs(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "# tier 1 — quick\n\n- [ ] wayback machine link fixer\n")
+    _seed(tmp_path, "nothing here\n", "someday-done.md")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "notes.md").write_text(
+        "finished the wayback machine link fixer last week\n"
+    )
+    rc = someday.main(["done-check", "--repos", str(repo), "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert any("wayback" in c["text"] for c in data["candidates"])
