@@ -606,6 +606,14 @@ def test_merge_keeps_winner_and_archives_loser(tmp_path, monkeypatch):
     assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
     out = src.read_text()
     assert out.count("nder bar") == 1
+    # The count assertion above is vacuous on its own: winner and loser
+    # differ only in case ("under bar" vs "UNDER bar"), so "nder bar"
+    # (lowercase) matches the winner's line regardless of whether the loser
+    # was actually removed. This asserts removal directly.
+    assert "led strip for UNDER bar" not in out
+    # The op's note is annotated onto the winner, not just recorded in the
+    # archive.
+    assert "duplicate wording" in out
     archive = (tmp_path / "pages" / "someday-done.md").read_text()
     assert "led strip for UNDER bar" in archive
     assert "collapsed duplicates" in archive
@@ -655,6 +663,176 @@ def test_archive_is_written_before_source(tmp_path, monkeypatch):
     monkeypatch.setattr(someday, "atomic_write", spy)
     assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
     assert order == ["someday-done.md", "someday.md"]
+
+
+def test_archive_preserves_continuation_lines_and_nested_bullets(tmp_path, monkeypatch):
+    # archive_entry must build from item.raw, not item.notes: notes is a
+    # lossy projection that only keeps indented "- " bullets, so building
+    # from it silently drops continuation lines and flattens nesting depth
+    # -- permanently, since the source line is gone and nothing reaches the
+    # archive either. Both safety nets are blind to this (origin and item
+    # counts are unaffected), so this has to be caught by a direct
+    # assertion on the archive's content.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, (FIXTURES / "sample.md").read_text())
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    section = next(s for s in doc.sections if s.title == "continuation lines")
+    target = section.items[0].id
+    plan = _plan(
+        tmp_path,
+        [{"op": "archive", "item": target, "reason": "closed", "note": "op note"}],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert "\t- a note" in archive
+    assert "\t  continued on the next line" in archive
+    assert "\t\t- a deeper sub-bullet" in archive
+    assert "\t- op note" in archive
+
+
+def test_archive_leaves_interstitial_tail_behind_in_source_section(
+    tmp_path, monkeypatch
+):
+    # Coverage was previously inherited from `place` only by shared
+    # implementation (_detach); MERGEABLE's archived items all have
+    # blank-only tails, so the non-blank branch never actually ran under
+    # `archive`. This exercises it directly.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, (FIXTURES / "sample.md").read_text())
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    intake = doc.sections[0]
+    target = next(i for i in intake.items if i.text == "a fresh idea with an aside").id
+    plan = _plan(
+        tmp_path,
+        [{"op": "archive", "item": target, "reason": "closed", "note": "x"}],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    out = src.read_text()
+    intake_body = out.split("# tier 1")[0]
+    aside = "an aside about scope that belongs to neither idea"
+    assert "a fresh idea with an aside" not in intake_body
+    assert aside in intake_body
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert aside not in archive
+
+
+def test_archive_rejects_unknown_reason(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(tmp_path, [{"op": "archive", "item": target, "reason": "bogus"}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert "bogus" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_merge_rejects_unknown_id_in_into(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    loser = items["led strip for UNDER bar"].id
+    plan = _plan(tmp_path, [{"op": "merge", "into": "deadbeef", "from": [loser]}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert "deadbeef" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_merge_rejects_unknown_id_in_from(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    winner = items["Led strip for under bar"].id
+    plan = _plan(tmp_path, [{"op": "merge", "into": winner, "from": ["deadbeef"]}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert "deadbeef" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_merge_rejects_winner_named_in_its_own_from_list(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    winner = items["Led strip for under bar"].id
+    plan = _plan(tmp_path, [{"op": "merge", "into": winner, "from": [winner]}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert src.read_text() == before
+
+
+def test_merge_rejects_duplicate_id_in_from(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    winner = items["Led strip for under bar"].id
+    loser = items["led strip for UNDER bar"].id
+    plan = _plan(tmp_path, [{"op": "merge", "into": winner, "from": [loser, loser]}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert src.read_text() == before
+
+
+def test_apply_with_no_archived_items_leaves_archive_file_untouched(
+    tmp_path, monkeypatch
+):
+    # The `if archived:` guard must not append an empty dated section when
+    # nothing was actually archived -- the real archive holds years of
+    # history, and a stub section on every no-op run would silently pile up.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    archive = _seed(
+        tmp_path,
+        "Completed items from [[someday]]\n\n- [x] old thing\n",
+        "someday-done.md",
+    )
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(tmp_path, [{"op": "annotate", "item": target, "notes": ["x"]}])
+    before = archive.read_text()
+    assert someday.main(["apply", str(plan)]) == 0
+    assert archive.read_text() == before
+
+
+def test_reconciliation_catches_an_item_recorded_removed_but_still_present(
+    tmp_path, monkeypatch, capsys
+):
+    # The dual of test_reconcile_reports_an_item_lost_without_being_recorded:
+    # reconcile()'s set subtraction (before - live - removed) can't catch an
+    # origin that is BOTH still live AND recorded as removed -- subtracting
+    # a live origin from a live-origins set is a no-op. Simulate the bug by
+    # making _detach a no-op, so archive records the item as removed and
+    # writes it to the archive file, but it never actually leaves the
+    # source. Both writes must be blocked.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    archive = _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path, [{"op": "archive", "item": target, "reason": "closed", "note": "x"}]
+    )
+    monkeypatch.setattr(someday, "_detach", lambda doc, item: None)
+    before_src = src.read_text()
+    before_archive = archive.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 3
+    assert "still present" in capsys.readouterr().err
+    assert src.read_text() == before_src
+    assert archive.read_text() == before_archive
 
 
 def test_place_leaves_first_item_tail_in_section_body(tmp_path, monkeypatch):

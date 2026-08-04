@@ -396,19 +396,24 @@ ARCHIVE_SECTIONS = {
     "routed": "routed elsewhere",
     "merged": "collapsed duplicates",
 }
-APPROVAL_REASONS = frozenset({"done", "closed", "missed"})
 
 
 def archive_entry(item: Item, note: str) -> list[str]:
-    """Render `item` as archive lines: its text, then its original notes
-    (excluding needs-research flag lines -- a stale research question is
-    noise in an archive), then any added_notes it picked up earlier in the
-    same plan, then the op's `note` if present. This never touches
-    `item.tail`; tail is section context handled by `_detach`, not archive
-    content.
+    """Render `item` as archive lines: its text, then every other raw line
+    verbatim -- notes, continuation lines, nested bullets, whatever `parse`
+    left in `raw` -- excluding needs-research flag lines, then any
+    added_notes it picked up earlier in the same plan, then the op's `note`
+    if present.
+
+    `item.raw` is the source of truth here, not `item.notes`: `notes` is a
+    lossy projection that only keeps indented `- ` bullets, silently
+    dropping continuation lines and flattening nesting depth. Using it here
+    would be the same bug class Task 3 fixed in `render_item` by passing
+    `raw[1:]` through unmodified. This never touches `item.tail`; tail is
+    section context handled by `_detach`, not archive content.
     """
     lines = [f"- {item.text}"]
-    lines.extend(f"\t- {n}" for n in item.notes if not FLAG_RE.match(n))
+    lines.extend(line for line in item.raw[1:] if not _is_flag_line(line))
     lines.extend(f"\t- {n}" for n in item.added_notes)
     if note:
         lines.append(f"\t- {note}")
@@ -481,9 +486,6 @@ def cmd_apply(args) -> int:
         removed_origins: set[int] = set()
         archived: dict[str, list[list[str]]] = {}
 
-        def drop(item: Item) -> None:
-            _detach(doc, item)
-
         for op in ops:
             kind = op["op"]
             if kind not in IN_PLACE_OPS and kind not in MOVE_OPS:
@@ -512,21 +514,29 @@ def cmd_apply(args) -> int:
                     archive_entry(item, op.get("note", ""))
                 )
                 removed_origins.add(item.origin)
-                drop(item)
+                _detach(doc, item)
             elif kind == "merge":
                 # The winner stays in place, untouched apart from the
                 # optional note. Each loser is archived under "merged" and
                 # removed_origins records its origin -- never its id, which
                 # is a content hash that would change under retitle.
-                winner = items[op["into"]]
+                winner_id = op["into"]
+                from_ids = op["from"]
+                if winner_id in from_ids:
+                    raise PlanError(
+                        f"merge: into id {winner_id} cannot also appear in from"
+                    )
+                if len(from_ids) != len(set(from_ids)):
+                    raise PlanError(f"merge: duplicate id in from: {from_ids}")
+                winner = items[winner_id]
                 note = op.get("note", "")
-                for ref in op["from"]:
+                for ref in from_ids:
                     loser = items[ref]
                     archived.setdefault("merged", []).append(
                         archive_entry(loser, f"merged into: {winner.text}")
                     )
                     removed_origins.add(loser.origin)
-                    drop(loser)
+                    _detach(doc, loser)
                 if note:
                     apply_annotate(winner, [note])
     except json.JSONDecodeError as e:
@@ -552,6 +562,22 @@ def cmd_apply(args) -> int:
         print(
             f"reconciliation failed: {len(lost)} item(s) vanished "
             f"(origins: {sorted(lost)})",
+            file=sys.stderr,
+        )
+        return 3
+
+    # The dual of the check above: `reconcile` only catches an origin that
+    # is gone from `doc` and NOT recorded as removed. It can't catch the
+    # opposite mistake -- an origin recorded as removed (and archived) that
+    # is still live in `doc` -- because subtracting a live origin from a
+    # live-origins set is a no-op. Without this, a removing op that forgot
+    # to detach the item would write it to the archive AND leave it in the
+    # source: a silent duplication, not a loss.
+    still_present = removed_origins & surviving
+    if still_present:
+        print(
+            f"reconciliation failed: {len(still_present)} item(s) recorded as "
+            f"removed but still present (origins: {sorted(still_present)})",
             file=sys.stderr,
         )
         return 3
