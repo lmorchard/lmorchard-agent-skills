@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 HEADING_RE = re.compile(r"^(#{1,6}) +(.*)$")
@@ -297,6 +297,70 @@ def cmd_dupes(args) -> int:
             print("candidate group:")
             for item in group:
                 print(f"  {item.id}  {item.text}")
+    return 0
+
+
+VERIFIED_RE = re.compile(r"\(verified (\d{4}-\d{2}-\d{2})\)")
+DATE_IN_TEXT_RE = re.compile(
+    r"\b(\d{4}-\d{2}-\d{2})\b"
+    r"|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2}\b",
+    re.I,
+)
+LINK_RE = re.compile(r"https?://|\]\(")
+
+
+def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[dict]]:
+    """Mechanical smells only -- no content judgment. `research_candidates`
+    in particular nominates only what a regex can prove (a URL, a markdown
+    link, or an existing needs-research flag); it must never try to infer
+    that some plain-text item names a product or tool worth researching --
+    that's the model's job, not this command's. Closed items (`checked is
+    True`) are skipped entirely; they aren't lint subjects.
+    """
+    report: dict[str, list[dict]] = {
+        "dated": [],
+        "fragments": [],
+        "untiered": [],
+        "research_candidates": [],
+        "stale": [],
+    }
+    cutoff = date.fromisoformat(today) - timedelta(days=stale_days)
+    bucket = None
+    for section in doc.sections:
+        if section.level == 1:
+            bucket = section.title
+        for item in section.items:
+            if item.checked is True:
+                continue
+            entry = {"id": item.id, "text": item.text, "bucket": bucket}
+            if DATE_IN_TEXT_RE.search(item.text):
+                report["dated"].append(entry)
+            if item.checked is None:
+                report["fragments"].append(entry)
+            if bucket is None:
+                report["untiered"].append(entry)
+            if LINK_RE.search(item.text) or is_flagged(item):
+                report["research_candidates"].append(entry)
+            for note in item.notes:
+                found = VERIFIED_RE.search(note)
+                if found and date.fromisoformat(found.group(1)) < cutoff:
+                    report["stale"].append(entry)
+                    break
+    return report
+
+
+def cmd_lint(args) -> int:
+    doc, _ = load(source_path())
+    today = args.today or date.today().isoformat()
+    report = lint_document(doc, today, args.stale_days)
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        for name, entries in report.items():
+            if entries:
+                print(f"{name}: {len(entries)}")
+                for entry in entries:
+                    print(f"  {entry['id']}  {entry['text']}")
     return 0
 
 
@@ -730,6 +794,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_dupes.add_argument("--threshold", type=float, default=0.75)
     p_dupes.add_argument("--json", action="store_true")
     p_dupes.set_defaults(func=cmd_dupes)
+
+    p_lint = sub.add_parser("lint", help="structural smells and research candidates")
+    p_lint.add_argument("--json", action="store_true")
+    p_lint.add_argument("--stale-days", type=int, default=180)
+    p_lint.add_argument("--today", default="")
+    p_lint.set_defaults(func=cmd_lint)
 
     return parser
 

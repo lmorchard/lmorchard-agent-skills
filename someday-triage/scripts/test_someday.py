@@ -993,3 +993,60 @@ def test_dupes_json_output(tmp_path, monkeypatch, capsys):
             assert item["id"]
             assert item["text"]
             assert item["id"] == expected_ids[item["text"]]
+
+
+LINTABLE = """A preamble line
+
+# intake
+
+- [ ] go to the show on 2026-09-14
+- [ ] check out [thing](https://example.com)
+- [ ] plain idea with no link
+
+# tier 1 — quick
+
+- [ ] researched thing
+	- alive and maintained (verified 2025-01-01)
+- [ ] fresh thing
+	- alive and maintained (verified 2026-08-01)
+
+# unclear
+
+- batteries?
+"""
+
+
+def test_lint_flags_dated_items(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert any("2026-09-14" in f["text"] for f in report["dated"])
+
+
+def test_lint_flags_non_checkbox_fragments(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert [f["text"] for f in report["fragments"]] == ["batteries?"]
+
+
+def test_lint_nominates_only_provable_research_candidates(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    texts = [f["text"] for f in report["research_candidates"]]
+    assert "check out [thing](https://example.com)" in texts
+    assert "plain idea with no link" not in texts
+
+
+def test_lint_flags_stale_verified_annotations(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    stale = [f["text"] for f in report["stale"]]
+    assert "researched thing" in stale
+    assert "fresh thing" not in stale
