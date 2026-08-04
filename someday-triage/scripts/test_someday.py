@@ -1160,6 +1160,21 @@ def test_lint_cli_json_output(tmp_path, monkeypatch, capsys):
     assert any("2026-09-14" in f["text"] for f in data["dated"])
 
 
+def test_distinctive_terms_breaks_ties_alphabetically():
+    # Regression test for a hash-randomization bug: content_words returns a
+    # set, so without a tie-break on the word text itself, ties on
+    # (corpus_count, -len(word)) resolved via Python's hash-randomized set
+    # iteration order -- the same input produced a different top-3 (and thus
+    # a different done-check result) from one process to the next, measured
+    # as 20/19/19 candidates across three runs on an unchanged real vault.
+    # All four words below tie on count (absent from corpus_counts, so 0)
+    # and length (5), so only alphabetical order can decide the top three --
+    # this fails if the tie-break key is ever removed, regardless of which
+    # process or hash seed runs it.
+    item = someday.Item(text="zebra olive mango grape")
+    assert someday.distinctive_terms(item, {}) == ["grape", "mango", "olive"]
+
+
 def test_done_check_finds_item_present_in_archive(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
     _seed(

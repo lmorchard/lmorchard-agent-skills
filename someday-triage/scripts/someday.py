@@ -408,10 +408,16 @@ def _is_done_check_excluded(path: Path) -> bool:
 def distinctive_terms(item: Item, corpus_counts: dict[str, int]) -> list[str]:
     """The item's rarest content words -- rare words identify a topic;
     common ones (shared across many open items) do not. Ties broken toward
-    longer words. Used by done-check (Task 8) to pick the terms a match is
-    scored against."""
+    longer words, then alphabetically. `content_words` returns a `set`, so
+    without a final tie-break on the word itself, ties on (count, -len)
+    resolve by Python's hash-randomized set iteration order -- the same
+    input then produces a different top-3, and thus a different done-check
+    result, from one process to the next. Measured: 20/19/19 candidates
+    across three back-to-back runs on an unchanged real vault before this
+    fix. Used by done-check (Task 8) to pick the terms a match is scored
+    against."""
     words = [w for w in content_words(item.text) if len(w) > 3]
-    words.sort(key=lambda w: (corpus_counts.get(w, 0), -len(w)))
+    words.sort(key=lambda w: (corpus_counts.get(w, 0), -len(w), w))
     return words[:3]
 
 
