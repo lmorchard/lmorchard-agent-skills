@@ -976,8 +976,20 @@ def test_dupes_does_not_group_paraphrased_logotron_items(tmp_path, monkeypatch):
 
 def test_dupes_json_output(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
-    _seed(tmp_path, DUPES)
+    src = _seed(tmp_path, DUPES)
     rc = someday.main(["dupes", "--json"])
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert all("items" in g for g in data["groups"])
+    assert data["groups"]
+
+    # A model authors `merge` ops against the ids in this payload, so it's
+    # not enough that "items" is present -- each item's id must actually be
+    # the same id `load` assigns that item, not just a non-empty string.
+    doc, _ = someday.load(src)
+    expected_ids = {i.text: i.id for s in doc.sections for i in s.items}
+    for group in data["groups"]:
+        assert group["items"]
+        for item in group["items"]:
+            assert item["id"]
+            assert item["text"]
+            assert item["id"] == expected_ids[item["text"]]
