@@ -673,6 +673,13 @@ def test_archive_preserves_continuation_lines_and_nested_bullets(tmp_path, monke
     # archive either. Both safety nets are blind to this (origin and item
     # counts are unaffected), so this has to be caught by a direct
     # assertion on the archive's content.
+    #
+    # The fixture's "continuation lines" item also carries a needs-research
+    # flag line specifically so the flag-exclusion branch has coverage: no
+    # other archive/merge test's fixture contains one, so without this the
+    # filter could regress (or be deleted outright) with all tests staying
+    # green while stale research questions leak permanently into the real,
+    # 337+-line archive a human reads.
     monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
     src = _seed(tmp_path, (FIXTURES / "sample.md").read_text())
     _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
@@ -689,6 +696,7 @@ def test_archive_preserves_continuation_lines_and_nested_bullets(tmp_path, monke
     assert "\t  continued on the next line" in archive
     assert "\t\t- a deeper sub-bullet" in archive
     assert "\t- op note" in archive
+    assert "needs-research" not in archive
 
 
 def test_archive_leaves_interstitial_tail_behind_in_source_section(

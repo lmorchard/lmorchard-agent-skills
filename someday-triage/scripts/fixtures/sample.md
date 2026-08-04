@@ -56,3 +56,4 @@ an aside about dust collection that belongs to neither item
 	- a note
 	  continued on the next line
 		- a deeper sub-bullet
+	- needs-research (2026-08-01): some stale question?
