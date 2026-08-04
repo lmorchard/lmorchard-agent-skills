@@ -291,11 +291,15 @@ def apply_flag(item: Item, question: str, remove: bool, today: str) -> None:
     # flag is the only op allowed to remove an original line: it drops the
     # old flag note (if any) from raw, keeping `notes` in sync so
     # `is_flagged` stays honest, and appends the new flag via added_notes
-    # like every other op.
+    # like every other op. added_notes must be filtered too, not just raw
+    # and notes -- a second flag op in the same plan only ever appends to
+    # added_notes, so an unfiltered added_notes would let a prior flag from
+    # earlier in the same plan survive alongside the new one.
     item.raw = [item.raw[0]] + [
         line for line in item.raw[1:] if not _is_flag_line(line)
     ]
     item.notes = [n for n in item.notes if not FLAG_RE.match(n)]
+    item.added_notes = [n for n in item.added_notes if not FLAG_RE.match(n)]
     if not remove:
         item.added_notes.append(f"needs-research ({today}): {question}")
     item.dirty = True
@@ -360,12 +364,13 @@ def cmd_apply(args) -> int:
         print(f"malformed plan: {e}", file=sys.stderr)
         return 2
 
-    # Two independent checks. The first is exact identity conservation on
-    # `origin`, which survives retitle; the second proves the serializer
-    # emitted something that parses back to the same population. Both
-    # compare item *counts*, not set cardinality, so a bug that leaves one
-    # `Item` reachable from two places can't cancel out against a serializer
-    # bug that drops one.
+    # Two independent checks. The first is a set difference on `origin`
+    # (deliberately: it must catch an origin present before but neither
+    # still present nor deliberately removed, which a count alone could
+    # mask). The second proves the serializer emitted something that parses
+    # back to the same population, compared by item *count*, not set
+    # cardinality, so a bug that leaves one `Item` reachable from two places
+    # can't cancel out against a serializer bug that drops one.
     surviving = live_origins(doc)
     lost = reconcile(before_origins, doc, removed_origins)
     if lost:

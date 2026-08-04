@@ -351,3 +351,50 @@ def test_flag_replaces_existing_flag(tmp_path, monkeypatch):
     out = src.read_text()
     assert "needs-research (2026-08-04): newer question?" in out
     assert "is it maintained?" not in out
+
+
+def test_two_flag_ops_in_one_plan_leave_exactly_one_flag_line(tmp_path, monkeypatch):
+    # apply_flag filters raw and notes before appending the new flag to
+    # added_notes, but a second flag op in the same plan only ever sees
+    # added_notes growing, never filtered -- so two flags on one item
+    # should not both survive to the written file.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "flag", "item": target, "question": "q1?"},
+            {"op": "flag", "item": target, "question": "q2?"},
+        ],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    out = src.read_text()
+    assert out.count("needs-research (2026-08-04):") == 1
+    assert "q2?" in out
+    assert "q1?" not in out
+
+
+def test_flag_then_remove_in_one_plan_leaves_no_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    doc, _ = someday.load(src)
+    origin = doc.sections[0].items[0].origin
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "flag", "item": target, "question": "q?"},
+            {"op": "flag", "item": target, "remove": True},
+        ],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    out = src.read_text()
+    assert "needs-research" not in out
+
+    # Re-load rather than trust the in-memory item, so this proves the file
+    # and the model agree, not just that the object in hand looks right.
+    doc2, _ = someday.load(src)
+    item2 = next(i for s in doc2.sections for i in s.items if i.origin == origin)
+    assert someday.is_flagged(item2) is False
