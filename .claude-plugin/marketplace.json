@@ -24,7 +24,8 @@
         "./television-companion",
         "./standup-digest",
         "./session-wrapup",
-        "./laurels"
+        "./laurels",
+        "./someday-triage"
       ]
     }
   ]
