@@ -22,7 +22,9 @@
         "./send-notification",
         "./journal-note",
         "./television-companion",
-        "./standup-digest"
+        "./standup-digest",
+        "./session-wrapup",
+        "./laurels"
       ]
     }
   ]
