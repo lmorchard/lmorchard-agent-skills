@@ -44,3 +44,10 @@ A less aspirational cousin of [[things I might do]]
 an aside about dust collection that belongs to neither item
 
 - [ ] order more sanding belts
+
+## continuation lines
+
+- [ ] existing thing
+	- a note
+	  continued on the next line
+		- a deeper sub-bullet

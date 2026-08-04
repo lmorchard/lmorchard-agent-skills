@@ -25,6 +25,7 @@ class Item:
     checked: bool | None = None
     text: str = ""
     notes: list[str] = field(default_factory=list)
+    added_notes: list[str] = field(default_factory=list)
     raw: list[str] = field(default_factory=list)
     tail: list[str] = field(default_factory=list)
     dirty: bool = False
@@ -48,9 +49,15 @@ class Document:
 
 
 def render_item(item: Item) -> list[str]:
+    """Regenerate only the item's own line; everything else is passed
+    through verbatim. `item.raw` may hold content `parse` never modelled
+    as a note or tail line (continuations, deeper-nested bullets), and
+    reconstructing from the parsed fields alone would silently drop it.
+    """
     box = "" if item.checked is None else ("[x] " if item.checked else "[ ] ")
     lines = [f"- {box}{item.text}"]
-    lines.extend(f"\t- {note}" for note in item.notes)
+    lines.extend(item.raw[1:])
+    lines.extend(f"\t- {note}" for note in item.added_notes)
     lines.extend(item.tail)
     return lines
 
@@ -181,7 +188,7 @@ def archive_path() -> Path:
 
 
 def load(path: Path) -> tuple[Document, str]:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     doc = parse(text)
     assign_ids(doc)
     return doc, text
@@ -238,7 +245,7 @@ def index_items(doc: Document) -> dict[str, Item]:
 
 def atomic_write(path: Path, text: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text)
+    tmp.write_text(text, encoding="utf-8")
     try:
         os.replace(tmp, path)
     except OSError:
@@ -258,7 +265,7 @@ def reconcile(
 
 
 def apply_annotate(item: Item, notes: list[str]) -> None:
-    item.notes.extend(notes)
+    item.added_notes.extend(notes)
     item.dirty = True
 
 
@@ -267,10 +274,30 @@ def apply_retitle(item: Item, text: str) -> None:
     item.dirty = True
 
 
+def _note_text(line: str) -> str | None:
+    """Extract note content from a raw line, mirroring the stripping `parse`
+    does when it collects notes. Returns None for lines that aren't bullets
+    (continuations, deeper structure `parse` doesn't otherwise model)."""
+    stripped = line.strip()
+    return stripped[2:] if stripped.startswith("- ") else None
+
+
+def _is_flag_line(line: str) -> bool:
+    text = _note_text(line)
+    return text is not None and bool(FLAG_RE.match(text))
+
+
 def apply_flag(item: Item, question: str, remove: bool, today: str) -> None:
+    # flag is the only op allowed to remove an original line: it drops the
+    # old flag note (if any) from raw, keeping `notes` in sync so
+    # `is_flagged` stays honest, and appends the new flag via added_notes
+    # like every other op.
+    item.raw = [item.raw[0]] + [
+        line for line in item.raw[1:] if not _is_flag_line(line)
+    ]
     item.notes = [n for n in item.notes if not FLAG_RE.match(n)]
     if not remove:
-        item.notes.append(f"needs-research ({today}): {question}")
+        item.added_notes.append(f"needs-research ({today}): {question}")
     item.dirty = True
 
 
@@ -280,49 +307,65 @@ IN_PLACE_OPS = {"annotate", "retitle", "flag"}
 def cmd_apply(args) -> int:
     src = source_path()
     doc, text = load(src)
-
-    plan = json.loads(Path(args.plan).read_text())
-    if plan.get("digest") != digest(text):
-        print(
-            f"stale plan: source digest is {digest(text)}, plan expects "
-            f"{plan.get('digest')}. Re-snapshot and rebuild the plan.",
-            file=sys.stderr,
-        )
-        return 2
-
     items = index_items(doc)
-    unknown = sorted(
-        {
-            ref
-            for op in plan.get("ops", [])
-            for ref in ([op.get("item")] if op.get("item") else [])
-            if ref not in items
-        }
-    )
-    if unknown:
-        print(f"unknown item ids: {', '.join(unknown)}", file=sys.stderr)
-        return 2
 
-    today = args.today or date.today().isoformat()
-    before_origins = {i.origin for i in items.values()}
-    removed_origins: set[int] = set()
-
-    for op in plan.get("ops", []):
-        kind = op["op"]
-        if kind not in IN_PLACE_OPS:
-            print(f"unsupported op: {kind}", file=sys.stderr)
+    # A model-authored plan is exactly the input most likely to be
+    # malformed: invalid JSON, a missing "op"/"item" key, a non-dict op, an
+    # op missing "notes"/"text". None of that is a data-loss path (nothing
+    # has been written yet), but it should still refuse cleanly with exit 2
+    # rather than crash with a traceback and exit 1.
+    try:
+        plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+        if plan.get("digest") != digest(text):
+            print(
+                f"stale plan: source digest is {digest(text)}, plan expects "
+                f"{plan.get('digest')}. Re-snapshot and rebuild the plan.",
+                file=sys.stderr,
+            )
             return 2
-        item = items[op["item"]]
-        if kind == "annotate":
-            apply_annotate(item, op["notes"])
-        elif kind == "retitle":
-            apply_retitle(item, op["text"])
-        elif kind == "flag":
-            apply_flag(item, op.get("question", ""), op.get("remove", False), today)
+
+        ops = plan.get("ops", [])
+        unknown = sorted(
+            {
+                ref
+                for op in ops
+                for ref in ([op.get("item")] if op.get("item") else [])
+                if ref not in items
+            }
+        )
+        if unknown:
+            print(f"unknown item ids: {', '.join(unknown)}", file=sys.stderr)
+            return 2
+
+        today = args.today or date.today().isoformat()
+        before_origins = live_origins(doc)
+        removed_origins: set[int] = set()
+
+        for op in ops:
+            kind = op["op"]
+            if kind not in IN_PLACE_OPS:
+                print(f"unsupported op: {kind}", file=sys.stderr)
+                return 2
+            item = items[op["item"]]
+            if kind == "annotate":
+                apply_annotate(item, op["notes"])
+            elif kind == "retitle":
+                apply_retitle(item, op["text"])
+            elif kind == "flag":
+                apply_flag(item, op.get("question", ""), op.get("remove", False), today)
+    except json.JSONDecodeError as e:
+        print(f"invalid plan JSON: {e}", file=sys.stderr)
+        return 2
+    except (PlanError, KeyError, TypeError, AttributeError) as e:
+        print(f"malformed plan: {e}", file=sys.stderr)
+        return 2
 
     # Two independent checks. The first is exact identity conservation on
     # `origin`, which survives retitle; the second proves the serializer
-    # emitted something that parses back to the same population.
+    # emitted something that parses back to the same population. Both
+    # compare item *counts*, not set cardinality, so a bug that leaves one
+    # `Item` reachable from two places can't cancel out against a serializer
+    # bug that drops one.
     surviving = live_origins(doc)
     lost = reconcile(before_origins, doc, removed_origins)
     if lost:
@@ -336,9 +379,10 @@ def cmd_apply(args) -> int:
     out = serialize(doc)
     reparsed = parse(out)
     reparsed_count = sum(len(s.items) for s in reparsed.sections)
-    if reparsed_count != len(surviving):
+    live_count = sum(len(s.items) for s in doc.sections)
+    if reparsed_count != live_count:
         print(
-            f"serializer check failed: {len(surviving)} items in memory but "
+            f"serializer check failed: {live_count} items in memory but "
             f"{reparsed_count} after re-parsing the output",
             file=sys.stderr,
         )

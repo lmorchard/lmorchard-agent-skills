@@ -204,7 +204,7 @@ def test_apply_rejects_stale_plan(tmp_path, monkeypatch, capsys):
     plan = _plan(tmp_path, [], digest_override="000000000000")
     before = src.read_text()
     rc = someday.main(["apply", str(plan)])
-    assert rc != 0
+    assert rc == 2
     assert "stale" in capsys.readouterr().err.lower()
     assert src.read_text() == before
 
@@ -215,8 +215,57 @@ def test_apply_rejects_unknown_item_id(tmp_path, monkeypatch, capsys):
     plan = _plan(tmp_path, [{"op": "retitle", "item": "deadbeef", "text": "nope"}])
     before = src.read_text()
     rc = someday.main(["apply", str(plan)])
-    assert rc != 0
+    assert rc == 2
     assert "deadbeef" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_apply_rejects_unsupported_op(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(tmp_path, [{"op": "defer", "item": target}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert "defer" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_apply_rejects_malformed_op(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    # A model-authored plan is exactly the input most likely to omit a
+    # required key; this should refuse cleanly, not crash with a KeyError
+    # traceback and exit 1.
+    plan = _plan(tmp_path, [{"op": "retitle"}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert "malformed plan" in capsys.readouterr().err.lower()
+    assert src.read_text() == before
+
+
+def test_apply_rejects_reconciliation_failure_from_broken_serializer(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(tmp_path, [{"op": "annotate", "item": target, "notes": ["x"]}])
+    before = src.read_text()
+
+    # The in-memory reconcile() check can't catch a bug in serialize()
+    # itself, so this simulates one directly: a serializer that silently
+    # drops every item. reconcile() sees an untouched `doc` and passes; the
+    # re-parse-and-count check is the only thing that can catch this.
+    monkeypatch.setattr(someday, "serialize", lambda doc: "# intake\n")
+
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 3
+    assert "serializer check failed" in capsys.readouterr().err.lower()
     assert src.read_text() == before
 
 
@@ -240,19 +289,34 @@ def test_dry_run_leaves_file_untouched(tmp_path, monkeypatch, capsys):
 def test_atomic_write_leaves_original_intact_on_failure(tmp_path, monkeypatch):
     target = tmp_path / "f.md"
     target.write_text("original\n")
-    real_replace = os.replace
 
     def boom(src, dst):
         raise OSError("simulated failure")
 
     monkeypatch.setattr(someday.os, "replace", boom)
-    try:
+    with pytest.raises(OSError):
         someday.atomic_write(target, "replacement\n")
-    except OSError:
-        pass
-    monkeypatch.setattr(someday.os, "replace", real_replace)
     assert target.read_text() == "original\n"
     assert list(tmp_path.glob("*.tmp*")) == []
+
+
+def test_annotate_preserves_continuation_lines_and_nested_bullets():
+    # render_item must regenerate only the item's own line. `parse` only
+    # models two line classes under an item ("- " bullets as notes, blank
+    # lines as tail); a continuation line and a deeper-nested bullet exist
+    # solely in `raw`. Before the fix, going dirty regenerated from `notes`
+    # + `tail` alone, which silently dropped the continuation line and
+    # flattened the nested bullet to a single tab — and both safety checks
+    # (reconcile on origin, reparse-and-count) are blind to this, since the
+    # item count and origin are unaffected.
+    doc = someday.parse((FIXTURES / "sample.md").read_text())
+    section = next(s for s in doc.sections if s.title == "continuation lines")
+    item = section.items[0]
+    someday.apply_annotate(item, ["a fresh note"])
+    out = someday.serialize(doc)
+    assert "\t  continued on the next line" in out
+    assert "\t\t- a deeper sub-bullet" in out
+    assert "\t- a fresh note" in out
 
 
 def test_annotate_and_retitle_are_written(tmp_path, monkeypatch):
