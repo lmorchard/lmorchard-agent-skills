@@ -1050,3 +1050,111 @@ def test_lint_flags_stale_verified_annotations(tmp_path, monkeypatch):
     stale = [f["text"] for f in report["stale"]]
     assert "researched thing" in stale
     assert "fresh thing" not in stale
+
+
+def test_lint_does_not_flag_items_without_dates(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    dated_texts = [f["text"] for f in report["dated"]]
+    assert "plain idea with no link" not in dated_texts
+
+
+# Regression cases for DATE_IN_TEXT_RE: the month-name alternative used to
+# allow a greedy `[a-z]*` suffix after the three-letter abbreviation, so it
+# matched into the middle of an unrelated word before landing on a trailing
+# number ("mar" + "io" in "mario", "may" + "be" in "maybe", etc). None of
+# these five phrases contain an actual date and must never be flagged.
+DATE_FALSE_POSITIVES = [
+    "play mario 5",
+    "maybe 5 minutes",
+    "julia 5.0",
+    "octopus 5-pack",
+    "deck 5 boards",
+]
+
+
+def test_lint_date_regex_rejects_month_prefix_false_positives(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    body = "\n".join(f"- [ ] {phrase}" for phrase in DATE_FALSE_POSITIVES)
+    _seed(tmp_path, f"# intake\n\n{body}\n")
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    dated_texts = [f["text"] for f in report["dated"]]
+    for phrase in DATE_FALSE_POSITIVES:
+        assert phrase not in dated_texts
+
+
+def test_lint_flags_untiered_items_before_any_level_one_heading(tmp_path, monkeypatch):
+    # A level-2 heading before any level-1 heading is legal markdown; the
+    # item it introduces has no enclosing level-1 title, so bucket stays
+    # None for it.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "## some cluster\n\n- [ ] orphan item\n")
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert [f["text"] for f in report["untiered"]] == ["orphan item"]
+    assert report["untiered"][0]["bucket"] is None
+
+
+def test_lint_stale_reports_item_once_despite_two_stale_notes(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n"
+        "- [ ] double stale thing\n"
+        "\t- alive (verified 2020-01-01)\n"
+        "\t- also alive (verified 2019-01-01)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    stale_texts = [f["text"] for f in report["stale"]]
+    assert stale_texts.count("double stale thing") == 1
+
+
+def test_lint_skips_closed_items_entirely(tmp_path, monkeypatch):
+    # A checked item that would otherwise trip research_candidates (it has
+    # a link) must not appear in any report list -- closed items are not
+    # lint subjects.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n- [x] check out [thing](https://example.com)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    for entries in report.values():
+        assert entries == []
+
+
+def test_lint_nominates_flagged_items_with_no_link(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n"
+        "- [ ] plain flagged idea\n"
+        "\t- needs-research (2026-08-01): is this real?\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    texts = [f["text"] for f in report["research_candidates"]]
+    assert "plain flagged idea" in texts
+
+
+def test_lint_cli_json_output(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    rc = someday.main(
+        ["lint", "--json", "--today", "2026-08-04", "--stale-days", "180"]
+    )
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert set(data.keys()) == {
+        "dated",
+        "fragments",
+        "untiered",
+        "research_candidates",
+        "stale",
+    }
+    assert any("2026-09-14" in f["text"] for f in data["dated"])

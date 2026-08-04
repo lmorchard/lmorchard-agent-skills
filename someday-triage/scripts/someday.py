@@ -302,8 +302,10 @@ def cmd_dupes(args) -> int:
 
 VERIFIED_RE = re.compile(r"\(verified (\d{4}-\d{2}-\d{2})\)")
 DATE_IN_TEXT_RE = re.compile(
-    r"\b(\d{4}-\d{2}-\d{2})\b"
-    r"|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2}\b",
+    r"\b\d{4}-\d{2}-\d{2}\b"
+    r"|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?"
+    r"|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?"
+    r"|dec(?:ember)?)\b[ ]+\d{1,2}\b",
     re.I,
 )
 LINK_RE = re.compile(r"https?://|\]\(")
