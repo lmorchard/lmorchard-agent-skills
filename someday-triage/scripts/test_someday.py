@@ -1371,6 +1371,27 @@ def test_done_check_searches_extra_dirs(tmp_path, monkeypatch, capsys):
     assert any("wayback" in c["text"] for c in data["candidates"])
 
 
+def test_done_check_excludes_the_skills_own_directory(tmp_path, monkeypatch, capsys):
+    # SKILL.md and README.md quote real item text as examples, and
+    # fixtures/sample.md is real item text -- so a `--repos ~/devel` audit
+    # (the documented path, and this repo lives under ~/devel) let the tool
+    # "confirm" an item against the skill's own prose. Same self-confirmation
+    # failure mode DONE_CHECK_SKIP_DIRS exists to close, reopened by the
+    # skill's own docs. Measured before the fix: 4 self-matches in this repo
+    # alone, 2 from SKILL.md and 2 from fixtures/sample.md.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "# tier 1 — quick\n\n- [ ] get a vectrex flash card\n")
+    _seed(tmp_path, "nothing here\n", "someday-done.md")
+    skill_root = Path(someday.__file__).resolve().parents[1]
+    # Guard the premise: if SKILL.md stops quoting this item the test would
+    # pass for the wrong reason.
+    assert "flash card" in (skill_root / "SKILL.md").read_text(encoding="utf-8")
+    rc = someday.main(["done-check", "--repos", str(skill_root), "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data["candidates"] == []
+
+
 @pytest.mark.parametrize(
     "skipped_relpath",
     [
@@ -1404,3 +1425,301 @@ def test_done_check_skips_self_confirmation_dirs(
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert data["candidates"] == []
+
+
+def test_status_json_lists_open_intake_items_with_ids(tmp_path, monkeypatch, capsys):
+    # The documented intake flow is "read the intake items, then emit
+    # place/retitle/annotate ops against them" -- which needs ids for
+    # *ordinary* items. lint/dupes/done-check only ever emit ids for items
+    # that trip a category or match something, so a plain checkbox line with
+    # no URL, no date and no duplicate had an id nothing printed, and the
+    # skill's main mode could not be completed at all.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, SAMPLE_WITH_FLAG)
+    rc = someday.main(["status", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    doc, _ = someday.load(src)
+    expected = [
+        {"id": i.id, "text": i.text}
+        for i in doc.sections[0].items
+        if i.checked is not True
+    ]
+    assert data["intake_items"] == expected
+    assert [i["text"] for i in data["intake_items"]] == ["new idea one", "new idea two"]
+    assert data["intake"] == len(data["intake_items"])
+
+
+def test_status_intake_items_skip_closed_items(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "# intake\n\n- [ ] still open\n- [x] already handled\n")
+    rc = someday.main(["status", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert [i["text"] for i in data["intake_items"]] == ["still open"]
+
+
+def test_status_intake_ids_are_the_ids_apply_accepts(tmp_path, monkeypatch, capsys):
+    # End-to-end proof that the primary workflow closes: take an id straight
+    # from `status --json`, file a `place` op against it, and have `apply`
+    # accept it. Ids are content hashes and must never be guessed by hand --
+    # this item's mixed case and doubled space are exactly what a naive guess
+    # gets wrong.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(
+        tmp_path,
+        "# intake\n\n- [ ] A  Plain Intake Item\n\n# tier 1 — quick\n\n## misc\n\n"
+        "- [ ] existing thing\n",
+    )
+    assert someday.main(["status", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    target = data["intake_items"][0]["id"]
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "tier 1 — quick",
+                "cluster": "misc",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan)]) == 0
+    out = src.read_text()
+    assert out.index("existing thing") < out.index("A  Plain Intake Item")
+
+
+def test_apply_rejects_op_sequenced_after_its_item_was_archived(
+    tmp_path, monkeypatch, capsys
+):
+    # The note went to NEITHER file before this check: archive_entry had
+    # already snapshotted the item's lines, and the item was detached from
+    # doc, so serialize never rendered its added_notes. Exit 0, "1 archived,
+    # 0 unaccounted" -- all three existing guards are blind to it, because
+    # nothing about item identity is wrong; the plan simply asked for
+    # something in an order that cannot be honoured.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    archive = _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "archive", "item": target, "reason": "closed"},
+            {"op": "annotate", "item": target, "notes": ["THIS SHOULD NOT VANISH"]},
+        ],
+    )
+    before_src = src.read_text()
+    before_archive = archive.read_text()
+    rc = someday.main(["apply", str(plan)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert target in err
+    assert "op 0" in err and "op 1" in err
+    assert src.read_text() == before_src
+    assert archive.read_text() == before_archive
+
+
+def test_apply_rejects_op_referencing_an_item_a_merge_removed(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    winner = items["Led strip for under bar"].id
+    loser = items["led strip for UNDER bar"].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "merge", "into": winner, "from": [loser]},
+            {"op": "annotate", "item": loser, "notes": ["THIS SHOULD NOT VANISH"]},
+        ],
+    )
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert loser in err
+    assert src.read_text() == before
+
+
+def test_apply_rejects_the_same_item_archived_twice(tmp_path, monkeypatch, capsys):
+    # Two archive ops on one item wrote TWO entries to someday-done.md under
+    # two contradictory reason headings while reporting "1 archived, 0
+    # unaccounted": the origin is gone from doc and recorded removed, so
+    # reconcile passes; it isn't live, so the duplication check passes; the
+    # source file is correct, so the serializer check passes.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    archive = _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "archive", "item": target, "reason": "closed"},
+            {"op": "archive", "item": target, "reason": "done"},
+        ],
+    )
+    before_archive = archive.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert target in capsys.readouterr().err
+    assert archive.read_text() == before_archive
+    assert "dead on arrival thing" in src.read_text()
+
+
+def test_archive_entry_count_must_match_removed_origins(tmp_path, monkeypatch, capsys):
+    # Deliberately independent of the pre-flight ordering check above. The
+    # pre-flight refuses a malformed *plan*; this invariant catches a future
+    # *code* bug that produces the same corruption (two archive entries, one
+    # removed origin) from a plan the pre-flight considers fine. Neutering
+    # _validate_op_ordering simulates exactly that: the bug is now inside the
+    # tool, not in the plan, and the count invariant is the only guard left.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    archive = _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "archive", "item": target, "reason": "closed"},
+            {"op": "archive", "item": target, "reason": "done"},
+        ],
+    )
+    monkeypatch.setattr(someday, "_validate_op_ordering", lambda ops: None)
+    before_src = src.read_text()
+    before_archive = archive.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 3
+    assert "archive entr" in capsys.readouterr().err
+    assert src.read_text() == before_src
+    assert archive.read_text() == before_archive
+
+
+@pytest.mark.parametrize(
+    "build_ops",
+    [
+        lambda ids: [
+            {"op": "flag", "item": ids["dead on arrival thing"], "question": "still?"},
+            {"op": "archive", "item": ids["dead on arrival thing"], "reason": "closed"},
+        ],
+        lambda ids: [
+            {"op": "annotate", "item": ids["led strip for UNDER bar"], "notes": ["n"]},
+            {
+                "op": "merge",
+                "into": ids["Led strip for under bar"],
+                "from": [ids["led strip for UNDER bar"]],
+            },
+        ],
+        lambda ids: [
+            {
+                "op": "merge",
+                "into": ids["Led strip for under bar"],
+                "from": [ids["led strip for UNDER bar"]],
+            },
+            {"op": "annotate", "item": ids["Led strip for under bar"], "notes": ["n"]},
+        ],
+    ],
+    ids=["flag-then-archive", "annotate-then-merge", "merge-then-annotate-winner"],
+)
+def test_apply_allows_legitimate_orderings_around_a_removing_op(
+    tmp_path, monkeypatch, build_ops
+):
+    # The ordering check must reject only what cannot be honoured. Touching
+    # an item *before* it is removed is fine (the edit reaches the archive
+    # entry), and so is touching the surviving winner of a merge either side
+    # of the merge itself.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    ids = {i.text: i.id for s in doc.sections for i in s.items}
+    plan = _plan(tmp_path, build_ops(ids))
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+
+
+@pytest.mark.parametrize(
+    "payload, field",
+    [
+        ({"op": "annotate", "notes": "first step: buy it"}, "notes"),
+        ({"op": "annotate", "notes": ["fine", 7]}, "notes"),
+        ({"op": "retitle", "text": 42}, "text"),
+        ({"op": "flag", "question": ["a", "b"]}, "question"),
+        ({"op": "place", "bucket": 3}, "bucket"),
+        ({"op": "place", "bucket": "tier 1 — quick", "cluster": 3}, "cluster"),
+        ({"op": "archive", "reason": ["closed"]}, "reason"),
+        ({"op": "archive", "reason": "closed", "note": 9}, "note"),
+    ],
+    ids=[
+        "notes-string",
+        "notes-non-string-member",
+        "text-int",
+        "question-list",
+        "bucket-int",
+        "cluster-int",
+        "reason-list",
+        "note-int",
+    ],
+)
+def test_apply_rejects_wrong_payload_types(
+    tmp_path, monkeypatch, capsys, payload, field
+):
+    # A bare string where a list belongs is a plausible model slip and the
+    # most dangerous of these: list.extend spreads it one character per
+    # bullet, so `"notes": "first step: buy it"` wrote 18 one-character
+    # bullets, exit 0, 0 unaccounted -- a corrupt write that reconciles
+    # clean, because item identity is untouched. `"text": 42` writes
+    # `- [ ] 42`. Refuse, don't write.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    op = dict(payload)
+    op["item"] = doc.sections[0].items[0].id
+    plan = _plan(tmp_path, [op])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert field in err
+    assert src.read_text() == before
+
+
+def test_apply_rejects_merge_from_that_is_not_a_list(tmp_path, monkeypatch, capsys):
+    # Worse than a wrong type: `refs()` iterates a string character by
+    # character, so the unknown-id check would report single letters and a
+    # one-element "from" spelled as a bare id would silently archive nothing.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "merge",
+                "into": items["Led strip for under bar"].id,
+                "from": items["led strip for UNDER bar"].id,
+            }
+        ],
+    )
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert "from" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_apply_rejects_a_non_object_op(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    plan = _plan(tmp_path, ["archive that thing"])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 2
+    assert src.read_text() == before

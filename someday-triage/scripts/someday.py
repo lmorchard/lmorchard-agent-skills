@@ -427,14 +427,28 @@ DONE_CHECK_SKIP_DIRS = frozenset(
 )
 
 
+# This skill's own directory, excluded from `--repos` scanning for the same
+# self-confirmation reason as DONE_CHECK_SKIP_DIRS: SKILL.md and README.md
+# quote real item text as worked examples ("get a vectrex flash card", the
+# LED-strip pair), and `fixtures/sample.md` *is* real item text. The
+# documented audit path is `--repos ~/devel`, which is where this repo lives,
+# so without this the tool confirms candidates against its own prose --
+# measured at 4 hits from this directory alone. One exclusion covers SKILL.md,
+# README.md and fixtures/ together, so no new example can reopen the hole.
+SKILL_DIR = Path(__file__).resolve().parents[1]
+
+
 def _is_done_check_excluded(path: Path) -> bool:
-    """True if `path` falls under a skipped directory, or under this
-    project's own `docs/dev-sessions` tree -- the same self-confirmation
-    failure mode as `.superpowers`, just under a project-specific name
-    rather than a generic one, so it isn't folded into the shared constant.
+    """True if `path` falls under a skipped directory, under this skill's own
+    directory (see SKILL_DIR), or under this project's own `docs/dev-sessions`
+    tree -- the same self-confirmation failure mode as `.superpowers`, just
+    under a project-specific name rather than a generic one, so it isn't
+    folded into the shared constant.
     """
     parts = path.parts
     if any(part in DONE_CHECK_SKIP_DIRS for part in parts):
+        return True
+    if path.resolve().is_relative_to(SKILL_DIR):
         return True
     return any(
         parts[i] == "docs" and parts[i + 1] == "dev-sessions"
@@ -539,14 +553,30 @@ def cmd_status(args) -> int:
     for section in doc.sections:
         if section.level == 1:
             buckets[section.title] = 0
+    # `intake_items` is the only place ids for *ordinary* items are published.
+    # lint/dupes/done-check emit an id only for an item that trips a category
+    # or matches something, so a plain checkbox line -- no URL, no date, no
+    # duplicate -- had an id nothing printed, and the documented intake flow
+    # (read the intake items, then emit place/retitle/annotate ops against
+    # them) could not be completed at all. Collected in the same walk as the
+    # bucket counts so the list and the `intake` count cannot disagree, and in
+    # document order because that is the order a human reads them in.
     current = None
+    intake_items: list[dict] = []
     for section in doc.sections:
         if section.level == 1:
             current = section.title
         if current is not None:
             buckets[current] += sum(1 for i in section.items if i.checked is not True)
+        if current == INTAKE_TITLE:
+            intake_items.extend(
+                {"id": i.id, "text": i.text}
+                for i in section.items
+                if i.checked is not True
+            )
     data = {
         "intake": buckets.get(INTAKE_TITLE, 0),
+        "intake_items": intake_items,
         "needs_research": sum(1 for i in open_items(doc) if is_flagged(i)),
         "open_total": len(open_items(doc)),
         "buckets": {k: v for k, v in buckets.items() if k != INTAKE_TITLE},
@@ -767,6 +797,99 @@ def append_archive(path: Path, groups: dict[str, list[list[str]]], today: str) -
 IN_PLACE_OPS = {"annotate", "retitle", "flag"}
 MOVE_OPS = {"place", "archive", "merge"}
 
+# Op fields that must be plain strings when present, and the two that must be
+# lists of strings. Kept as data so a new field can't quietly skip validation.
+STR_FIELDS = (
+    "op",
+    "item",
+    "into",
+    "bucket",
+    "cluster",
+    "reason",
+    "question",
+    "note",
+    "text",
+)
+STR_LIST_FIELDS = ("notes", "from")
+
+
+def op_refs(op: dict) -> list[str]:
+    """Every item id an op names. merge names its ids via "into"/"from" rather
+    than "item"; this has to cover all three or a merge naming a nonexistent id
+    slips past the unknown-id check and KeyErrors in the op loop instead of
+    returning exit 2."""
+    out = []
+    if op.get("item"):
+        out.append(op["item"])
+    if op.get("into"):
+        out.append(op["into"])
+    out.extend(op.get("from", []))
+    return out
+
+
+def _validate_op_types(ops: list) -> None:
+    """Type-check every op's payload before any op runs.
+
+    A model emitting `"notes": "first step: buy it"` -- a bare string where a
+    list belongs -- is a plausible slip, and `list.extend` accepts it happily,
+    spreading the string one character per bullet: 18 one-character note
+    bullets written to the file, exit 0, "0 unaccounted". No existing guard
+    can see it, because item identity is untouched; the content is simply
+    wrong. `"text": 42` writes `- [ ] 42` the same way, and a string `from`
+    would make the unknown-id check report single letters. Refuse, don't write.
+    """
+    for n, op in enumerate(ops):
+        if not isinstance(op, dict):
+            raise PlanError(f"op {n}: expected an object, got {type(op).__name__}")
+        for key in STR_LIST_FIELDS:
+            value = op.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, list) or not all(
+                isinstance(x, str) for x in value
+            ):
+                raise PlanError(f"op {n}: {key} must be a list of strings")
+        for key in STR_FIELDS:
+            value = op.get(key)
+            if value is not None and not isinstance(value, str):
+                raise PlanError(
+                    f"op {n}: {key} must be a string, got {type(value).__name__}"
+                )
+
+
+def _validate_op_ordering(ops: list[dict]) -> None:
+    """Refuse a plan that touches an item after an earlier op removed it.
+
+    Ops are applied in order and removal is final: `archive` snapshots the
+    item's lines and detaches it, and `merge` does the same to each loser. A
+    later op against that id therefore edits an object no longer reachable
+    from `doc` and no longer feeding the archive entry -- so an `annotate`
+    sequenced after an `archive` writes its note to *neither* file, silently,
+    at exit 0. Nothing downstream can catch that: the item count and origin
+    are exactly as intended.
+
+    Rejecting the plan is the right answer rather than reordering it: which of
+    the two the author meant is genuinely ambiguous, and guessing would write
+    something nobody asked for. Ops *before* the removing op are fine -- their
+    edits reach the archive entry -- and so is touching a merge's surviving
+    winner either side of the merge.
+    """
+    removed_by: dict[str, int] = {}
+    for n, op in enumerate(ops):
+        for ref in op_refs(op):
+            if ref in removed_by:
+                raise PlanError(
+                    f"op {n} references item {ref}, which op {removed_by[ref]} "
+                    f"removes; an op after the removing op would be silently "
+                    f"discarded. Put edits before the archive/merge that "
+                    f"removes the item, or drop them."
+                )
+        if op.get("op") == "archive" and op.get("item"):
+            removed_by[op["item"]] = n
+        elif op.get("op") == "merge":
+            for ref in op.get("from", []):
+                removed_by[ref] = n
+
 
 def cmd_apply(args) -> int:
     src = source_path()
@@ -790,20 +913,13 @@ def cmd_apply(args) -> int:
 
         ops = plan.get("ops", [])
 
-        def refs(op: dict) -> list[str]:
-            # merge names its ids via "into"/"from" rather than "item"; this
-            # has to cover all three or a merge naming a nonexistent id
-            # slips past this check and KeyErrors in the op loop instead of
-            # returning exit 2.
-            out = []
-            if op.get("item"):
-                out.append(op["item"])
-            if op.get("into"):
-                out.append(op["into"])
-            out.extend(op.get("from", []))
-            return out
+        # Pre-flight, in this order: types first, because every later check
+        # (including op_refs) assumes a string is a string and a list is a
+        # list; then ordering, which needs well-typed ids to reason about.
+        _validate_op_types(ops)
+        _validate_op_ordering(ops)
 
-        unknown = sorted({r for op in ops for r in refs(op) if r not in items})
+        unknown = sorted({r for op in ops for r in op_refs(op) if r not in items})
         if unknown:
             print(f"unknown item ids: {', '.join(unknown)}", file=sys.stderr)
             return 2
@@ -905,6 +1021,26 @@ def cmd_apply(args) -> int:
         print(
             f"reconciliation failed: {len(still_present)} item(s) recorded as "
             f"removed but still present (origins: {sorted(still_present)})",
+            file=sys.stderr,
+        )
+        return 3
+
+    # One archive entry per removed origin, exactly. `_validate_op_ordering`
+    # already rejects the *plans* that break this (the same id archived twice,
+    # or archived and then merged away), but that check and this one guard
+    # different things: the pre-flight refuses a malformed plan, while this
+    # invariant catches a future *code* bug -- a removing op that appends two
+    # entries, or records a removal without archiving anything -- from a plan
+    # that is perfectly well formed. Neither subsumes the other, and the
+    # corruption they both prevent is invisible to the three checks above:
+    # the origin is gone from `doc` and recorded removed, so `reconcile`
+    # passes; it isn't live, so the duplication check passes; the source file
+    # is correct, so the serializer check passes. Only the archive is wrong.
+    archived_entries = sum(len(v) for v in archived.values())
+    if archived_entries != len(removed_origins):
+        print(
+            f"reconciliation failed: {archived_entries} archive entries for "
+            f"{len(removed_origins)} removed item(s)",
             file=sys.stderr,
         )
         return 3
