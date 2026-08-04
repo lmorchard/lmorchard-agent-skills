@@ -53,6 +53,17 @@ Single script file is deliberate: `laurels.py` is 228 lines and does five comman
   - `Document` dataclass: `preamble: list[str]`, `sections: list[Section]`, `trailing_newline: bool`
 
 `origin` is a 0-based sequence number stamped at parse time, in document order. It is **immutable identity**: unlike `id` (a content hash), it survives a `retitle`, which is what makes exact reconciliation possible in Task 3. Nothing else may write it.
+
+### As built (amended after Task 1 review — this is the shape later tasks code against)
+
+Task 1's step-by-step code below is the starting draft. Two fields were added during its review, because the draft silently destroyed prose that was not a note bullet. The final data model is:
+
+- `Item.tail: list[str]` — post-item lines that are blank or plain-unindented, held **verbatim and not in `raw`**. Keeps such prose in position by construction.
+- `Section.footer: list[str]` — at section close (next heading, and at EOF), if the section has items and the **last** item's `tail` contains a non-blank line, that whole run moves here and the item's `tail` is cleared. Blank-only tails stay on the item.
+- `serialize` per section: `raw_heading`, `body`, then per item `item.raw + item.tail` when clean or `render_item(item)` when dirty, then `section.footer`.
+- `render_item` emits the text line, note bullets, then `item.tail` verbatim.
+
+Why both tiers: a footer describing a whole section must not travel with an item when Task 4's `place` moves it, while prose between two items must stay between them. One tier can only satisfy one of those. **Task 4 must not move `Section.footer` when relocating an item.**
   - `parse(text: str) -> Document`
   - `serialize(doc: Document) -> str`
   - `render_item(item: Item) -> list[str]`
