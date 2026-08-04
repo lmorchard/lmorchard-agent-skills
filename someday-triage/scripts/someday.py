@@ -19,6 +19,7 @@ class Item:
     text: str = ""
     notes: list[str] = field(default_factory=list)
     raw: list[str] = field(default_factory=list)
+    tail: list[str] = field(default_factory=list)
     dirty: bool = False
 
 
@@ -43,7 +44,23 @@ def render_item(item: Item) -> list[str]:
     box = "" if item.checked is None else ("[x] " if item.checked else "[ ] ")
     lines = [f"- {box}{item.text}"]
     lines.extend(f"\t- {note}" for note in item.notes)
+    lines.extend(item.tail)
     return lines
+
+
+def _close_section(section: Section | None) -> None:
+    """Promote a trailing item's tail to the section footer, if it's more
+    than blank padding. A footer describes the section, not the item it
+    happened to follow, so it must not travel with that item if a later task
+    moves the item elsewhere. Pure blank padding has nothing worth promoting
+    and is left where it is.
+    """
+    if section is None or not section.items:
+        return
+    last = section.items[-1]
+    if any(line != "" for line in last.tail):
+        section.footer = last.tail
+        last.tail = []
 
 
 def parse(text: str) -> Document:
@@ -53,17 +70,12 @@ def parse(text: str) -> Document:
     trailing = lines.pop() if lines and lines[-1] == "" else None
     section: Section | None = None
     item: Item | None = None
-    # Once a section's footer has started (a plain line after an item), later
-    # lines keep appending to that same footer run — including blank lines —
-    # rather than snapping back to the item. This is not lookahead: it only
-    # continues a run already in progress, mirroring how an item keeps
-    # absorbing its own trailing blank/indented lines.
-    in_footer = False
     next_origin = 0
 
     for line in lines:
         heading = HEADING_RE.match(line)
         if heading:
+            _close_section(section)
             section = Section(
                 level=len(heading.group(1)),
                 title=heading.group(2),
@@ -71,7 +83,6 @@ def parse(text: str) -> Document:
             )
             doc.sections.append(section)
             item = None
-            in_footer = False
             continue
 
         item_match = ITEM_RE.match(line)
@@ -85,18 +96,20 @@ def parse(text: str) -> Document:
             )
             next_origin += 1
             section.items.append(item)
-            in_footer = False
             continue
 
         if item is not None:
-            if not in_footer and (line == "" or INDENTED_RE.match(line)):
+            if INDENTED_RE.match(line):
                 item.raw.append(line)
                 stripped = line.strip()
                 if stripped.startswith("- "):
                     item.notes.append(stripped[2:])
             else:
-                section.footer.append(line)
-                in_footer = True
+                # Blank or plain unindented lines are positional: they sit
+                # right after this item until the next item or heading says
+                # otherwise. Keeping them in tail (not raw) preserves that
+                # position even if this item is later regenerated dirty.
+                item.tail.append(line)
             continue
 
         if section is None:
@@ -104,6 +117,7 @@ def parse(text: str) -> Document:
         else:
             section.body.append(line)
 
+    _close_section(section)
     doc.trailing_newline = trailing is not None
     return doc
 
@@ -114,7 +128,11 @@ def serialize(doc: Document) -> str:
         out.append(section.raw_heading)
         out.extend(section.body)
         for item in section.items:
-            out.extend(render_item(item) if item.dirty else item.raw)
+            if item.dirty:
+                out.extend(render_item(item))
+            else:
+                out.extend(item.raw)
+                out.extend(item.tail)
         out.extend(section.footer)
     text = "\n".join(out)
     if doc.trailing_newline:
