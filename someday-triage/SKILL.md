@@ -80,7 +80,8 @@ If `intake` and `needs_research` are both `0`: report that plus one line of `lin
 ## Mode: intake (default, run often)
 
 1. `status --json`. Bail per the cheap path if there is nothing to do. Keep the `digest`.
-2. Read the `# intake` items and the heading skeleton only — not all existing items.
+2. Read the `# intake` items and the heading skeleton only — not all existing items. The ids you
+   will file ops against come from that same `status --json`, under `intake_items`.
 3. Gather signals: `lint --json`, `dupes --json`, and `done-check --json` (archive-only, no
    `--repos`; in intake you are only judging a handful of new items, so the noise rate is a
    non-issue).
@@ -166,9 +167,21 @@ already solved elsewhere? is the obvious approach a trap?
 ## Plan format
 
 `digest` must be the `digest` from the `status --json` you based the plan on; `apply` exits 2 if
-the file changed since. Item ids come from `status`/`lint`/`dupes`/`done-check` output — they are
-content hashes (`sha1(normalized text)[:8]`, `-2` suffix on exact collisions), so re-snapshot
-after any apply.
+the file changed since.
+
+**Where ids come from.** Ids are content hashes — `sha1(normalized text)[:8]`, `-2` suffix on
+exact collisions — so **never compute or guess one by hand.** Normalization lowercases and
+collapses runs of whitespace before hashing, so a hand-derived id is wrong for any text with mixed
+case or a doubled space, and `apply` rejects the plan (exit 2, `unknown item ids`). Read every id
+out of command output:
+
+- **Intake work → `status --json`'s `intake_items`**, a `{id, text}` entry per open item in the
+  `# intake` bucket, in document order. This is the only place ids for *ordinary* items appear;
+  without it the intake flow has nothing to file ops against.
+- `lint --json`, `dupes --json`, `done-check --json` carry ids **only for the items they surface**
+  — one that trips no lint category, matches no duplicate and hits no archive line appears in
+  none of them. Use these when acting on what they found; use `intake_items` otherwise.
+- An id changes when the item's text changes, so re-snapshot after any apply.
 
 ```json
 {
@@ -194,9 +207,22 @@ after any apply.
 - `merge` — the winner (`into`) stays; each id in `from` is archived under `collapsed duplicates`.
 - `archive` — `reason` is one of `done`, `missed`, `closed`, `routed`, `merged`.
 
+Two rules about plan *shape*, both enforced before anything is written:
+
+- **Nothing may reference an item after the op that removes it.** Ops run in order and removal is
+  final, so an `annotate` sequenced after that item's `archive` — or after the `merge` that
+  archived it — would write its note to neither file. `apply` rejects the whole plan (exit 2,
+  naming the id and both op indices) rather than discard the edit. Put edits *before* the removing
+  op, where they still reach the archive entry; a removing op is the last word on its item, and one
+  item gets at most one.
+- **Field types are checked.** `notes` and `from` must be lists of strings; `item`, `into`,
+  `bucket`, `cluster`, `reason`, `question`, `note`, `text` must be strings. `"notes": "buy it"` is
+  refused, not spread one character per bullet.
+
 Exit codes: `0` success, `2` plan rejected (bad JSON, stale digest, unknown id, unknown bucket or
-cluster, unknown reason, unsupported op), `3` reconciliation or serializer check failed — an
-internal invariant broke, so stop and report rather than retry.
+cluster, unknown reason, unsupported op, an op after the one that removes its item, a wrongly typed
+field), `3` reconciliation or serializer check failed — an internal invariant broke, so stop and
+report rather than retry.
 
 ## Commands
 
@@ -211,7 +237,8 @@ internal invariant broke, so stop and report rather than retry.
 
 JSON shapes:
 
-- `status` → `intake`, `needs_research`, `open_total`, `buckets` (title → open count), `digest`
+- `status` → `intake`, `intake_items` (list of `{id, text}`, open `# intake` items in document
+  order), `needs_research`, `open_total`, `buckets` (title → open count), `digest`
 - `lint` → `dated`, `fragments`, `untiered`, `research_candidates`, `stale`, `malformed_dates`;
   each a list of `{id, text, bucket}`
 - `dupes` → `threshold`, `groups[].items[].{id, text}`

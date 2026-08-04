@@ -84,7 +84,7 @@ Item      id, checked, text, notes[], raw
 ## CLI
 
 ```
-someday.py status      [--json]                intake count, needs-research depth, per-tier, digest
+someday.py status      [--json]                intake count + ids, needs-research depth, per-tier, digest
 someday.py dupes       [--threshold] [--json]  duplicate candidate clusters
 someday.py done-check  [--repos DIR...]        already-done candidates
 someday.py lint        [--json]                structural smells + research candidates
@@ -98,7 +98,7 @@ someday.py apply PLAN  [--dry-run]             the only mutating command
 - items whose text contains a date or deadline (the expiry failure mode)
 - non-checkbox fragments (e.g. a bare `batteries?` line)
 - items outside any tier
-- notes orphaned from their item
+- **malformed verified dates**: a `(verified …)` note whose date matches the digit shape but is not a real calendar date (a typo'd `2026-13-45`). Such a note is skipped when computing staleness — the item counts as having no usable verification date — and surfaced here so it gets fixed rather than silently ignored.
 - **research candidates**: the script detects only what it can do reliably — items containing a URL or a markdown link, and items with a `needs-research` flag. Recognizing that "get a vectrex flash card" names a purchasable product with no link attached is model work. The script nominates; the model adds to the list. Overstating what the regex can do here would produce a queue that misses exactly the items that most need checking.
 - **stale annotations**: items whose *most recent* `(verified YYYY-MM-DD)` note is older than the staleness threshold (default 180 days, `--stale-days`). (An earlier version of this rule compared the *oldest* verified date instead; since no op edits or removes an existing note, re-verifying only ever appends a fresh note, so comparing against the oldest made staleness permanent and unclearable. Fixed post-Task-7.)
 
@@ -111,7 +111,7 @@ Pinned so they round-trip and stay greppable in Obsidian:
 
 `done-check` checks each item's distinctive terms against `someday-done.md` and optionally `~/devel` repos, nominating a candidate when at least 2 of an item's terms co-occur on a single line of some file. Tuned for recall over precision: a false positive costs one glance, a false negative cost seven months. (An earlier version matched terms against one lowercased blob of all haystack text with a looser threshold; measured on the real 174-item vault, that nominated 40% of open items from the archive alone and 95% with `--repos ~/devel` added, because enough concatenated text makes almost any pair of common words co-occur *somewhere*. Rejected in favor of the single-line co-occurrence rule above, which keeps the same recall-over-precision intent but requires the match to mean something.)
 
-`--repos` skips `.git`, `node_modules`, `.superpowers`, `.venv`, `venv`, `dist`, `build`, `__pycache__`, `.tox`, and this project's own `docs/dev-sessions/` tree — without that, the tool matches its own dev-session reports (which quote real item text) as if they were independent evidence of completion. That bug alone accounted for a third of one real audit run's hits.
+`--repos` skips `.git`, `node_modules`, `.superpowers`, `.venv`, `venv`, `dist`, `build`, `__pycache__`, `.tox`, this project's own `docs/dev-sessions/` tree, and **the skill's own directory** (`Path(__file__).resolve().parents[1]`, covering `SKILL.md`, `README.md` and `scripts/fixtures/`) — without those, the tool matches its own reports, docs and fixtures (which quote real item text as worked examples) as if they were independent evidence of completion. The dev-sessions case alone accounted for a third of one real audit run's hits; the skill's own directory measured 4 more, and the documented audit path `--repos ~/devel` is exactly where this repo lives.
 
 Even with that fixed, `--repos` stays noisy by design and is audit-only, not part of routine intake: intake only ever runs `done-check` on the 2-3 new intake items in a run, where noise is negligible, while a full-vault audit run measures roughly 10% of all open items nominated from the archive alone versus roughly 60% with `--repos ~/devel` (~100 code repos) added. The gap is `distinctive_terms` ranking rarity *within the vault* — words rare in a todo list (`build`, `check`, `system`, `agent`) are common in software documentation, so a large enough pile of markdown makes them co-occur by chance. The principled fix (rank against the haystack, not the vault) is not being built: the archive is a curated record of finished work, a hundred code repos are just prose, and scanning them for "have I done this" was always a stretch. Use `--repos` for a deliberate audit with noise expected, not routine intake.
 
@@ -155,8 +155,10 @@ Research should target decision-changing questions specifically: is it maintaine
 
 ## Error handling
 
-- Malformed markdown: parse errors cite line numbers and refuse to proceed.
+- Malformed markdown: **parsing is total — it never errors.** Deliberate, and the opposite of what an earlier draft of this spec said ("parse errors cite line numbers and refuse to proceed"). Every line lands somewhere (item, note, `raw` continuation, tail, section body, or preamble), so content the model doesn't understand round-trips byte-exact instead of blocking the run. A real file carries genuinely malformed markdown — the unbalanced `[spec kit]((https://…` link is a fixture — and a triage tool that refuses to read the list until the list is tidy is a tool that never runs. Refusal is reserved for the plan, where it can be precise; the document is only ever passed through.
 - Plan references an unknown item id: reject.
+- Plan references an item after the op that removes it (an `annotate` sequenced after that item's `archive`, or after the `merge` that archived it): reject. The edit could not be honoured — the archive entry is already snapshotted and the item is detached, so the note would reach neither file — and which of the two the author meant is ambiguous, so refusing beats guessing.
+- Op field of the wrong type (`"notes": "buy it"`, a bare string where a list of strings belongs; `"text": 42`): reject. `list.extend` accepts a string and spreads it one character per bullet, which is a corrupt write that reconciles clean.
 - Plan targets a nonexistent cluster: reject unless `--allow-new-clusters`.
 - Reconciliation shortfall: reject, report the unaccounted items.
 - Digest mismatch: reject as stale.
