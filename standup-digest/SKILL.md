@@ -30,10 +30,10 @@ transcripts yourself.
 
 ## The digest contract
 
-The JSON (`schema_version` 2) has: `schema_version`, `generated_at`, `window`
+The JSON (`schema_version` 3) has: `schema_version`, `generated_at`, `window`
 (`since`/`until`/`rule`),
 `stats` (`sessions`/`projects`/`malformed_lines`/`prompt_chars_dropped`/`gh_calls`),
-`warnings`, `sessions[]`, and `commits[]`.
+`warnings`, `notes`, `sessions[]`, `commits[]`, and `working_state[]`.
 
 Each session carries `session_id`, `transcript`, `title`, `project`, `cwds`, `repo`,
 `branches`, `launch`, `started_at`, `ended_at`, `prompt_count`, `prompt_chars_dropped`,
@@ -43,6 +43,20 @@ transcript (see the conversation register-firewall rule below). Each ref carries
 `repo`, `number`, `source`, `url`, `verification`, `state`, `title`, `merged_at`,
 `closed_at`. Each commit carries `repo`, `path`, `sha`, `subject`, `committed_at` —
 `repo` is `null` for a local repo with no GitHub remote (use `path`'s directory name).
+
+Each `working_state` entry carries `repo`, `path`, `branch`, `dirty_files`, and
+`last_commit` (`sha`/`subject`/`committed_at`, or `null`). One entry per **worktree**
+touched, whether or not it produced a commit — `path` is the worktree, so two linked
+worktrees of one repository appear separately even though their commits are pooled
+under the main checkout. `branch` is `null` on a detached HEAD; `dirty_files` is `null`
+if `git status` couldn't be read. `last_commit` is deliberately **not** windowed: it
+dates a branch whose work predates the window, which is how you tell parked work from
+work never started.
+
+`warnings` and `notes` are different in kind. `warnings` is degradation — something
+that should have been checkable wasn't. `notes` is bookkeeping: a cwd that isn't a
+checkout, a container directory expanded to the checkouts beneath it. Notes are not
+degradation and must never be rendered as such.
 
 Do not invent fields, and do not read anything from the digest beyond this list.
 
@@ -56,6 +70,7 @@ interesting. You do **not** get to upgrade what is true.
 | `verification: confirmed` + state `MERGED` or `CLOSED` | landed, merged, shipped, closed |
 | `verification: confirmed` + state `OPEN` | opened, in flight, up for review |
 | `verification: unavailable` | worked on, looked at |
+| `working_state` with `dirty_files > 0` or an out-of-window `last_commit` | worked on, in progress locally, parked, uncommitted |
 
 `unavailable` means the claim could not be checked, not that it succeeded or failed.
 Never describe an `unavailable` ref with success language ("shipped", "merged", "landed",
@@ -80,6 +95,19 @@ Further binding rules:
   green") — treat it as a record of what was said, never as evidence that it happened.
   This is the firewall that lets the narrative get vivid without the accomplishments
   getting loose.
+- **`working_state` is evidence of work, never of shipping.** Uncommitted changes and a
+  pre-window `last_commit` prove someone was in that tree; they prove nothing landed.
+  "Has uncommitted changes on `<branch>`", "parked since Saturday", "left mid-change" are
+  all fair. "Shipped", "landed", "finished", "implemented" are not, no matter how
+  confidently `assistant_notes` describes the work as done. This closes a specific gap:
+  before it, a session that spent hours in a checkout and committed nothing inside the
+  window had *no* backing evidence at all, so the honest rendering was silence — which
+  read as if the day hadn't happened. `working_state` gives that day a floor, at the
+  "worked on" tier and no higher.
+- A `working_state` entry on its own is thin. Pair it with the session that touched that
+  `path` (via `cwds`) so the reader gets what was being worked on, not just that a tree
+  is dirty. An entry with `dirty_files: 0` and a `last_commit` inside the window is
+  already covered by `commits[]` — don't report it twice.
 - Anything absent from the digest never appears as an accomplishment.
 - Sessions with `launch: "driver"` were kicked off or delegated, not hand-worked. Say so.
 - Sessions with `launch: "unknown"` get neutral phrasing — describe what happened
@@ -88,7 +116,10 @@ Further binding rules:
   call it delegated; "unknown" means the transcript had no human prompts to judge
   from, not that the answer is ambiguous between the two.
 - When `warnings` is non-empty, add one short line saying the run was degraded. A
-  partial digest must never read as a clean one.
+  partial digest must never read as a clean one. **`notes` is not a warning** — never
+  mention a note in the degraded line, and never let one turn a clean run into a
+  hedged one. Notes exist so you can tell "nothing was collected here" from "something
+  broke"; a run whose only complaint is a plain-directory cwd is a clean run.
 - `refs` with `source: "prose"` are the looser signal — Les may have only mentioned a
   number while working on something else. Weight them below `pr-link` refs and below
   commits. A session with a long list of prose refs (e.g. five or more) is usually one
@@ -151,6 +182,11 @@ Create the directory if needed; name the file for the window's **start** date. S
      register only (see the firewall) — this is where the day gets its texture.
    - **_what shipped_** — only commit- or ref-backed items, phrased as the ref-state
      table permits. If nothing shipped, say so; never promote discussion into shipment.
+     When nothing shipped but `working_state` shows a dirty tree or a pre-window
+     `last_commit` for a `path` this session was in, say that instead of just "nothing" —
+     e.g. "nothing landed; `wt-bidi-webext-commands` has 2 uncommitted files, last commit
+     Aug 1." That is the difference between a day that produced no artifact and a day the
+     digest simply couldn't see.
 
 Group `commits[]` by `repo`. A session's own `repo` says which project section it belongs
 to, but a commit is never attributable to one session within that project — so list a

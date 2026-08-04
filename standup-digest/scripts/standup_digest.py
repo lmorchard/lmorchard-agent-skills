@@ -367,6 +367,11 @@ def _run(cmd: list[str], timeout: int = 20) -> str | None:
 
 GIT_LOG_SEP = "\x1f"
 
+# Immediate-subdirectory cap when expanding a cwd that holds checkouts rather
+# than being one. A container like `~/firefox` has a handful of entries; a home
+# directory has dozens and isn't what the expansion is for.
+CHILD_SCAN_LIMIT = 24
+
 _UNVERIFIED = {
     "verification": "unavailable",
     "state": None,
@@ -383,15 +388,18 @@ class NullVerifier:
         self.warnings: list[str] = [
             "verification skipped (--no-verify): refs unverified, commits not collected"
         ]
+        self.notes: list[str] = []
         self.gh_calls = 0
+        self.worktrees: dict[str, None] = {}
 
     def verify_ref(self, ref: Ref) -> dict:
         return dict(_UNVERIFIED)
 
-    def commits(
-        self, cwd: str, window: Window, warn_non_repo: bool = True
-    ) -> list[dict]:
+    def commits(self, cwd: str, window: Window, session_cwd: bool = True) -> list[dict]:
         return []
+
+    def working_state(self, toplevel: str) -> dict | None:
+        return None
 
     def repo_for(self, cwd: str) -> str | None:
         return None
@@ -402,7 +410,12 @@ class GhVerifier:
 
     def __init__(self) -> None:
         self.warnings: list[str] = []
+        self.notes: list[str] = []
         self.gh_calls = 0
+        # Worktree toplevels seen while collecting commits, in discovery order.
+        # Keyed by worktree rather than by repository: `working_state` reports
+        # branch and dirt, both of which are per-worktree.
+        self.worktrees: dict[str, None] = {}
         self._ref_cache: dict[tuple, dict] = {}
         self._emails: dict[str, str] = {}
         self._repos: dict[str, str | None] = {}
@@ -474,21 +487,16 @@ class GhVerifier:
             self._emails[repo_root] = out.strip() if out else ""
         return self._emails[repo_root] or None
 
-    def commits(
-        self, cwd: str, window: Window, warn_non_repo: bool = True
-    ) -> list[dict]:
-        """Les's commits in `cwd`'s repository inside the window.
+    def _resolve(self, cwd: str) -> tuple[str, str] | None:
+        """`(repo_root, worktree_toplevel)` for `cwd`, or None if not a checkout.
 
-        `warn_non_repo=False` for harvested `cd`/`git -C` targets: a stray `cd`
-        into a non-repo directory is expected, not run degradation.
+        The two differ inside a linked worktree: `--git-common-dir` points at
+        the main checkout (so `git log --all` there covers every worktree's
+        branches, and commits dedupe to one repository), while
+        `--show-toplevel` is the worktree itself (which is what carries a
+        branch and uncommitted changes).
         """
-        if not Path(cwd).exists():
-            # A cleaned-up worktree isn't degradation -- there's nothing to
-            # warn about, and the parent repo's commits are still collected
-            # via whichever other cwd points at it.
-            return []
-
-        common = _run(
+        out = _run(
             [
                 "git",
                 "-C",
@@ -496,13 +504,141 @@ class GhVerifier:
                 "rev-parse",
                 "--path-format=absolute",
                 "--git-common-dir",
+                "--show-toplevel",
             ]
         )
-        if common is None:
-            if warn_non_repo:
-                self.warnings.append(f"not a git repository, commits skipped: {cwd}")
+        if out is None:
+            return None
+        lines = out.strip().splitlines()
+        if len(lines) != 2:
+            return None
+        return str(Path(lines[0]).parent), lines[1]
+
+    def _child_checkouts(self, cwd: str) -> list[str]:
+        """Immediate subdirectories of `cwd` that are git checkouts.
+
+        Only ever called on a `cwd` that isn't itself a checkout, and it
+        filters to directories that are -- so recursion through `commits`
+        bottoms out after one level by construction.
+
+        Hidden directories are skipped and the scan is capped: a session
+        launched from `~` or `/` would otherwise fan out into a `rev-parse`
+        per entry, and a directory with dozens of children isn't the
+        container-of-checkouts case this is for.
+        """
+        try:
+            entries = sorted(
+                child
+                for child in Path(cwd).iterdir()
+                if child.is_dir() and not child.name.startswith(".")
+            )
+        except OSError:
             return []
-        repo_root = str(Path(common.strip()).parent)
+        if len(entries) > CHILD_SCAN_LIMIT:
+            return []
+        return [str(child) for child in entries if self._resolve(str(child))]
+
+    def working_state(self, toplevel: str) -> dict | None:
+        """Branch, uncommitted-file count, and Les's last commit in a worktree.
+
+        This is the only signal for work that is real but unlanded: a session
+        can spend hours in a checkout and leave the window with nothing in
+        `commits[]` -- edits still in the working tree, or a branch whose
+        commits predate the window. Reporting it lets the renderer say "worked
+        on" with something behind it. It is never evidence of shipping.
+        """
+        if not Path(toplevel).exists():
+            return None
+
+        branch = _run(
+            ["git", "-C", toplevel, "symbolic-ref", "--quiet", "--short", "HEAD"]
+        )
+        status = _run(["git", "-C", toplevel, "status", "--porcelain"])
+        if status is None:
+            self.notes.append(f"git status failed, working state unknown: {toplevel}")
+            dirty = None
+        else:
+            dirty = len([line for line in status.splitlines() if line.strip()])
+
+        return {
+            "repo": repo_from_cwd(toplevel),
+            "path": toplevel,
+            "branch": branch.strip() if branch else None,
+            "dirty_files": dirty,
+            "last_commit": self._last_commit(toplevel),
+        }
+
+    def _last_commit(self, toplevel: str) -> dict | None:
+        """Les's most recent commit reachable from this worktree's HEAD.
+
+        Deliberately unwindowed -- the point is to date a branch whose work
+        landed before the window, so the renderer can tell "parked since
+        Saturday" from "never started". Authorship-filtered because a shared
+        tree's HEAD is somebody else's merge commit.
+        """
+        email = self._author_email(toplevel)
+        cmd = [
+            "git",
+            "-C",
+            toplevel,
+            "log",
+            "-1",
+            f"--pretty=format:%h{GIT_LOG_SEP}%s{GIT_LOG_SEP}%cI",
+        ]
+        if email:
+            cmd.append(f"--author={email}")
+
+        out = _run(cmd)
+        if not out or not out.strip():
+            return None
+        parts = out.strip().splitlines()[0].split(GIT_LOG_SEP)
+        if len(parts) != 3:
+            return None
+        return {"sha": parts[0], "subject": parts[1], "committed_at": parts[2]}
+
+    def commits(self, cwd: str, window: Window, session_cwd: bool = True) -> list[dict]:
+        """Les's commits in `cwd`'s repository inside the window.
+
+        `session_cwd` separates where a session actually sat from a directory
+        it merely passed through, and three behaviors hang off it. A session
+        cwd is deliberate: if it isn't a checkout it may be a directory that
+        *holds* them (`~/firefox` holds `firefox/` plus its worktrees), so it
+        is expanded one level down, and the worktrees it resolves are recorded
+        for `working_state`. A harvested `cd`/`git -C` target is incidental --
+        `cd /Users/lorchard/devel` is navigation, not a claim about where work
+        happened, and expanding it would pull in every unrelated checkout
+        underneath. So harvested paths contribute commits only: no expansion,
+        no working state, and no note (a stray `cd` into a plain directory is
+        routine and says nothing worth recording).
+
+        Either way, a cwd that isn't a checkout is never run degradation.
+        """
+        if not Path(cwd).exists():
+            # A cleaned-up worktree isn't degradation -- there's nothing to
+            # warn about, and the parent repo's commits are still collected
+            # via whichever other cwd points at it.
+            return []
+
+        resolved = self._resolve(cwd)
+        if resolved is None:
+            if not session_cwd:
+                return []
+            children = self._child_checkouts(cwd)
+            if children:
+                self.notes.append(
+                    f"not a checkout but holds {len(children)}, scanned one level "
+                    f"down: {cwd}"
+                )
+            else:
+                self.notes.append(f"not a checkout, no commits to collect: {cwd}")
+            found: list[dict] = []
+            for child in children:
+                found.extend(self.commits(child, window))
+            return found
+
+        repo_root, toplevel = resolved
+        if session_cwd:
+            self.worktrees.setdefault(toplevel, None)
 
         if repo_root in self._commits_cache:
             return self._commits_cache[repo_root]
@@ -667,7 +803,7 @@ def distill_session(transcript: Transcript, window: Window, verifier) -> dict:
     }
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_ROOT = Path.home() / ".claude" / "projects"
 
 
@@ -723,17 +859,26 @@ def build_digest(root: Path, window: Window, verifier) -> dict:
                 commits.append(commit)
 
     # Directories the sessions cd'd into but never launched from -- their commits
-    # are invisible to the cwd scan above. A stray cd into a non-repo is expected,
-    # so these are scanned quietly (warn_non_repo=False).
+    # are invisible to the cwd scan above, but the path itself is incidental
+    # (see `commits`' session_cwd contract).
     for cwd in harvested:
         if cwd in seen_paths:
             continue
         seen_paths.add(cwd)
-        for commit in verifier.commits(cwd, window, warn_non_repo=False):
+        for commit in verifier.commits(cwd, window, session_cwd=False):
             if commit["sha"] in seen_shas:
                 continue
             seen_shas.add(commit["sha"])
             commits.append(commit)
+
+    # Every worktree the commit scan resolved, whether or not it produced a
+    # commit in the window. A worktree with nothing in `commits[]` is exactly
+    # the case this exists for.
+    working_state = [
+        state
+        for toplevel in verifier.worktrees
+        if (state := verifier.working_state(toplevel)) is not None
+    ]
 
     warnings.extend(verifier.warnings)
 
@@ -753,8 +898,10 @@ def build_digest(root: Path, window: Window, verifier) -> dict:
             "gh_calls": verifier.gh_calls,
         },
         "warnings": warnings,
+        "notes": list(verifier.notes),
         "sessions": sessions,
         "commits": commits,
+        "working_state": working_state,
     }
 
 

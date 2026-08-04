@@ -18,6 +18,17 @@ def local(y, m, d, hh=0, mm=0):
     return naive.astimezone()
 
 
+def rev_parse(git_dir, toplevel=None):
+    """Fake two-line `rev-parse --git-common-dir --show-toplevel` output.
+
+    `toplevel` defaults to the git dir's parent -- a plain checkout, where the
+    two coincide. Pass it explicitly to fake a linked worktree, whose common
+    dir belongs to the main checkout while its toplevel is its own.
+    """
+    top = toplevel if toplevel is not None else str(Path(git_dir).parent)
+    return f"{git_dir}\n{top}"
+
+
 def test_monday_sweeps_friday_through_sunday():
     # 2026-08-03 is a Monday.
     w = sd.resolve_window(local(2026, 8, 3, 9, 16))
@@ -87,7 +98,8 @@ def test_dst_transitions_do_not_shift_window_boundaries():
         time.tzset()
 
 
-FIXTURES = Path(__file__).parent / "fixtures"
+HERE = Path(__file__).parent
+FIXTURES = HERE / "fixtures"
 
 
 def test_uuid_filenames_are_transcripts():
@@ -682,7 +694,7 @@ def test_commits_parses_git_log(monkeypatch):
 
     def fake_run(cmd, timeout=20):
         if cmd[:2] == ["git", "-C"] and "rev-parse" in cmd:
-            return "/Users/lorchard/devel/tabs-project/pilo/.git"
+            return rev_parse("/Users/lorchard/devel/tabs-project/pilo/.git")
         if "log" in cmd:
             return log
         if "remote" in cmd:
@@ -718,7 +730,7 @@ def test_commits_scopes_author_email_per_repo(tmp_path, monkeypatch):
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
             repo_dir = cmd[cmd.index("-C") + 1]
-            return f"{repo_dir}/.git"
+            return rev_parse(f"{repo_dir}/.git")
         if "config" in cmd:
             config_calls.append(cmd)
             repo_dir = cmd[cmd.index("-C") + 1]
@@ -750,7 +762,7 @@ def test_commits_warns_when_git_log_fails(tmp_path, monkeypatch):
 
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
-            return f"{repo}/.git"
+            return rev_parse(f"{repo}/.git")
         if "config" in cmd:
             return "lorchard@mozilla.com"
         if "log" in cmd:
@@ -773,7 +785,7 @@ def test_commits_empty_log_is_not_a_warning(tmp_path, monkeypatch):
 
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
-            return f"{repo}/.git"
+            return rev_parse(f"{repo}/.git")
         if "config" in cmd:
             return "lorchard@mozilla.com"
         if "log" in cmd:
@@ -820,7 +832,9 @@ def test_commits_dedupes_git_log_by_resolved_repo_root(tmp_path, monkeypatch):
 
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
-            return f"{shared_repo_root}/.git"
+            # Shared common dir, per-worktree toplevel: what git really reports
+            # from inside two linked worktrees of one repository.
+            return rev_parse(f"{shared_repo_root}/.git", cmd[cmd.index("-C") + 1])
         if "config" in cmd:
             return "lorchard@mozilla.com"
         if "log" in cmd:
@@ -836,6 +850,9 @@ def test_commits_dedupes_git_log_by_resolved_repo_root(tmp_path, monkeypatch):
     v.commits(str(worktree_b), window)
 
     assert len(log_calls) == 1
+    # ...but working state is per-worktree, so both are tracked: each has its
+    # own branch and its own uncommitted changes.
+    assert list(v.worktrees) == [str(worktree_a), str(worktree_b)]
 
 
 def test_build_digest_over_fixtures_no_verify():
@@ -873,9 +890,12 @@ DIGEST_TOP_LEVEL_KEYS = {
     "window",
     "stats",
     "warnings",
+    "notes",
     "sessions",
     "commits",
+    "working_state",
 }
+WORKING_STATE_KEYS = {"repo", "path", "branch", "dirty_files", "last_commit"}
 SESSION_KEYS = {
     "session_id",
     "transcript",
@@ -928,11 +948,17 @@ def test_digest_matches_documented_schema(monkeypatch):
                 }
             )
         if "rev-parse" in cmd:
-            return "/Users/lorchard/devel/tabs-project/pilo/.git"
+            # A real directory: `working_state` skips a toplevel that no longer
+            # exists, and this test needs an entry to check the shape of.
+            return rev_parse(f"{HERE}/.git")
         if "remote" in cmd:
             return "git@github.com:mozilla/pilo.git"
         if "config" in cmd:
             return "lorchard@mozilla.com"
+        if "symbolic-ref" in cmd:
+            return "feat/thing"
+        if "status" in cmd:
+            return " M src/a.py\n?? src/b.py"
         if "log" in cmd:
             return "abc1234\x1ffix: something\x1f2026-07-28T14:02:11-04:00"
         return None
@@ -942,6 +968,11 @@ def test_digest_matches_documented_schema(monkeypatch):
     digest = sd.build_digest(FIXTURES.parent, window, sd.GhVerifier())
 
     assert set(digest.keys()) == DIGEST_TOP_LEVEL_KEYS
+
+    assert digest["working_state"], "a resolved worktree should report its state"
+    for state in digest["working_state"]:
+        assert set(state.keys()) == WORKING_STATE_KEYS
+        assert set(state["last_commit"].keys()) == {"sha", "subject", "committed_at"}
 
     assert digest["sessions"], "fixtures should yield at least one session"
     for session in digest["sessions"]:
@@ -1075,21 +1106,189 @@ def test_harvest_dirs_finds_git_C_after_config_flag():
     assert sd.harvest_dirs(recs) == ["/Users/me/devel/proj"]
 
 
-def test_commits_suppresses_non_repo_warning_when_asked(tmp_path, monkeypatch):
+def test_non_checkout_cwd_is_a_note_not_a_warning(tmp_path, monkeypatch):
+    # A cwd that isn't a checkout is routine, not run degradation: a stray `cd`
+    # into a plain directory, or a launch dir that merely holds checkouts. It
+    # used to land in `warnings`, which made every such run render as degraded.
     plain = tmp_path / "plain"
     plain.mkdir()
-    # rev-parse returns None -> "not a git repository" branch.
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: None)
     window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
 
-    quiet = sd.GhVerifier()
-    assert quiet.commits(str(plain), window, warn_non_repo=False) == []
-    assert quiet.warnings == []
+    v = sd.GhVerifier()
+    assert v.commits(str(plain), window) == []
+    assert v.warnings == []
+    assert len(v.notes) == 1
+    assert "no commits to collect" in v.notes[0]
 
-    loud = sd.GhVerifier()
-    assert loud.commits(str(plain), window) == []
-    assert len(loud.warnings) == 1
-    assert "not a git repository" in loud.warnings[0]
+
+def test_container_cwd_expands_to_its_checkouts(tmp_path, monkeypatch):
+    # `~/firefox` holds `firefox/` plus its worktrees and is not itself a
+    # checkout. Launching a session there used to yield one warning and zero
+    # commits; the checkouts beneath it must be scanned instead.
+    container = tmp_path / "firefox"
+    (container / "firefox").mkdir(parents=True)
+    (container / "wt-bidi").mkdir()
+    (container / "docs").mkdir()  # a plain directory, not a checkout
+    (container / ".cache").mkdir()  # hidden: never scanned
+
+    scanned = []
+    # Matched by exact path, not basename: the container is itself named
+    # `firefox`, so a basename match would resolve it as a checkout and never
+    # expand -- which is the whole behavior under test.
+    checkouts = {str(container / "firefox"), str(container / "wt-bidi")}
+
+    def fake_run(cmd, timeout=20):
+        target = cmd[cmd.index("-C") + 1] if "-C" in cmd else ""
+        if "rev-parse" in cmd:
+            if target in checkouts:
+                return rev_parse(f"{target}/.git")
+            return None
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "log" in cmd:
+            scanned.append(target)
+            return f"abc{len(scanned)}\x1fwork\x1f2026-07-29T10:00:00-07:00"
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
+    v = sd.GhVerifier()
+    got = v.commits(str(container), window)
+
+    assert sorted(Path(p).name for p in scanned) == ["firefox", "wt-bidi"]
+    assert len(got) == 2
+    assert v.warnings == []
+    assert any("scanned one level down" in note for note in v.notes)
+
+
+def test_harvested_path_contributes_commits_but_not_working_state(
+    tmp_path, monkeypatch
+):
+    # A `cd /Users/lorchard/devel` is navigation, not a claim about where work
+    # happened. Expanding it pulled in every checkout underneath -- unrelated
+    # repos with week-old uncommitted dirt, which then read as "worked on".
+    # Harvested paths contribute commits only: no expansion, no working state,
+    # no note.
+    container = tmp_path / "devel"
+    unrelated = container / "some-other-repo"
+    unrelated.mkdir(parents=True)
+
+    def fake_run(cmd, timeout=20):
+        target = cmd[cmd.index("-C") + 1] if "-C" in cmd else ""
+        if "rev-parse" in cmd:
+            return rev_parse(f"{target}/.git") if target == str(unrelated) else None
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "log" in cmd:
+            return "aaa1111\x1fstale\x1f2026-07-29T10:00:00-07:00"
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
+    v = sd.GhVerifier()
+
+    assert v.commits(str(container), window, session_cwd=False) == []
+    assert v.worktrees == {}
+    assert v.notes == []
+
+    # A checkout reached by `cd` still yields its commits -- that path predates
+    # this flag and stays. It just doesn't earn a working_state entry.
+    got = v.commits(str(unrelated), window, session_cwd=False)
+    assert len(got) == 1
+    assert v.worktrees == {}
+
+
+def test_child_scan_stops_at_one_level(tmp_path, monkeypatch):
+    # Expansion must not walk a whole tree: only checkouts that are immediate
+    # children count, so a checkout nested two deep under a plain directory is
+    # out of reach rather than triggering an unbounded descent.
+    container = tmp_path / "top"
+    buried = container / "middle" / "repo"
+    buried.mkdir(parents=True)
+
+    def fake_run(cmd, timeout=20):
+        target = cmd[cmd.index("-C") + 1] if "-C" in cmd else ""
+        if "rev-parse" in cmd and Path(target).name == "repo":
+            return rev_parse(f"{target}/.git")
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
+    v = sd.GhVerifier()
+
+    assert v.commits(str(container), window) == []
+    assert v.worktrees == {}
+
+
+def test_child_scan_skips_a_directory_with_too_many_children(tmp_path, monkeypatch):
+    # A session launched from `~` shouldn't fan out into a rev-parse per entry.
+    home = tmp_path / "home"
+    home.mkdir()
+    for i in range(sd.CHILD_SCAN_LIMIT + 1):
+        (home / f"dir{i:02d}").mkdir()
+
+    calls = []
+
+    def fake_run(cmd, timeout=20):
+        calls.append(cmd)
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
+    v = sd.GhVerifier()
+
+    assert v.commits(str(home), window) == []
+    # Exactly one rev-parse: the cwd itself. No per-child probing.
+    assert len(calls) == 1
+
+
+def test_working_state_reports_unlanded_work(tmp_path, monkeypatch):
+    # The case that motivated this: a full session in a checkout that produced
+    # no commit inside the window. `commits[]` is empty and correct; without
+    # working_state there is nothing at all to hang "worked on" from.
+    tree = tmp_path / "wt-bidi"
+    tree.mkdir()
+
+    def fake_run(cmd, timeout=20):
+        if "rev-parse" in cmd:
+            return rev_parse(f"{tree}/.git")
+        if "remote" in cmd:
+            return "git@github.com:mozilla/gecko-dev.git"
+        if "config" in cmd:
+            return "lorchard@mozilla.com"
+        if "symbolic-ref" in cmd:
+            return "bidi-webext-commands\n"
+        if "status" in cmd:
+            return " M remote/shared/Foo.sys.mjs\n?? notes.md\n"
+        if "log" in cmd:
+            # Windowed log is empty; the unwindowed -1 lookup still answers.
+            return (
+                ""
+                if "--since=" in " ".join(cmd)
+                else ("27318fe\x1fDocument the registry\x1f2026-08-01T14:17:23-07:00")
+            )
+        return None
+
+    monkeypatch.setattr(sd, "_run", fake_run)
+    window = sd.resolve_window(local(2026, 8, 4), date="2026-08-03")
+    v = sd.GhVerifier()
+
+    assert v.commits(str(tree), window) == []  # nothing landed in the window
+    state = v.working_state(str(tree))
+
+    assert state["repo"] == "mozilla/gecko-dev"
+    assert state["branch"] == "bidi-webext-commands"
+    assert state["dirty_files"] == 2
+    assert state["last_commit"]["sha"] == "27318fe"
+    # Dated before the window opened: parked work, not work done today.
+    assert state["last_commit"]["committed_at"] < window.since.isoformat()
+    assert v.warnings == []
+
+
+def test_working_state_skips_a_removed_worktree(tmp_path, monkeypatch):
+    monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: "whatever")
+    assert sd.GhVerifier().working_state(str(tmp_path / "gone")) is None
 
 
 def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
@@ -1138,7 +1337,7 @@ def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
 
     def fake_run(cmd, timeout=20):
         if "rev-parse" in cmd:
-            return f"{cmd[cmd.index('-C') + 1]}/.git"
+            return rev_parse(f"{cmd[cmd.index('-C') + 1]}/.git")
         if "remote" in cmd:
             return None  # no origin -> repo None
         if "config" in cmd:
@@ -1157,7 +1356,7 @@ def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
     assert len(hits) == 1
     assert hits[0]["repo"] is None
     assert hits[0]["path"] == str(work)
-    assert not any("not a git repository" in w for w in digest["warnings"])
+    assert digest["warnings"] == []
 
 
 # --- Phase 2: bounded assistant-prose narrative signal ------------------------
