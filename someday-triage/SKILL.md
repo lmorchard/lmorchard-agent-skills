@@ -60,6 +60,12 @@ Read this before trusting any command's output. Each line below was measured, no
   anywhere in the real `someday.md` yet — the research notes added in the 2026-08-04
   reorganization carry no dates — so `lint`'s `stale` category reports nothing. Audit mode has to
   backfill those dates before the mechanism can ever fire. See the audit section.
+- **`lint`'s `malformed_dates` category catches a marker the tooling can't read.** `VERIFIED_RE`
+  only checks digit shape, so a typo like `(verified 2026-13-45)` matches the pattern but isn't a
+  real calendar date. Such a note is skipped when computing staleness — the item is treated as
+  having no usable verification date, same as if the note weren't there at all — and surfaced
+  separately under `malformed_dates` so you know to go fix the date rather than have it silently
+  ignored.
 
 ## The cheap path
 
@@ -120,6 +126,10 @@ Runs intake first. Because pruning already happens at intake, the rest is mainte
      new note is what counts — the item clears on the next `lint` once it carries a date inside
      the window, and the old note is just left in place as history. Do not work around this by
      hand-editing the file.
+   - Also check `lint`'s `malformed_dates` category: a `(verified …)` note whose date isn't a
+     real calendar date (e.g. a typo'd `2026-13-45`) is skipped, not treated as fresh or stale, so
+     it never fires the mechanism at all. `annotate` a corrected `(verified YYYY-MM-DD)` note the
+     same way you would re-verify a stale one.
 3. Expiry sweep: route anything date-bound out of the list (`lint`'s `dated` category).
 4. Cluster drift: propose restructuring where clusters have grown lopsided or incoherent. New
    clusters require `apply --allow-new-clusters`.
@@ -202,7 +212,7 @@ internal invariant broke, so stop and report rather than retry.
 JSON shapes:
 
 - `status` → `intake`, `needs_research`, `open_total`, `buckets` (title → open count), `digest`
-- `lint` → `dated`, `fragments`, `untiered`, `research_candidates`, `stale`; each a list of
-  `{id, text, bucket}`
+- `lint` → `dated`, `fragments`, `untiered`, `research_candidates`, `stale`, `malformed_dates`;
+  each a list of `{id, text, bucket}`
 - `dupes` → `threshold`, `groups[].items[].{id, text}`
 - `done-check` → `candidates[].{id, text, matched, evidence: {source, line}}`

@@ -1161,6 +1161,88 @@ def test_lint_stale_does_not_flag_item_with_no_verified_note(tmp_path, monkeypat
     assert "never checked thing" not in stale_texts
 
 
+def test_lint_malformed_verified_date_does_not_crash_and_is_reported(
+    tmp_path, monkeypatch
+):
+    # VERIFIED_RE validates digit shape only, so "2026-13-45" matches it
+    # even though it isn't a real calendar date. Before the fix,
+    # date.fromisoformat raised ValueError here and took down the whole
+    # (read-only) lint command over one typo'd marker.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n- [ ] bad date thing\n\t- alive (verified 2026-13-45)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert "bad date thing" in [f["text"] for f in report["malformed_dates"]]
+
+
+def test_lint_malformed_only_date_is_not_stale(tmp_path, monkeypatch):
+    # An item whose *only* verified note is malformed has no usable
+    # verification date, so it must not be reported stale -- we genuinely
+    # don't know when it was verified, same as an item with no note at all.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n- [ ] bad date thing\n\t- alive (verified 2026-13-45)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert "bad date thing" not in [f["text"] for f in report["stale"]]
+
+
+def test_lint_malformed_plus_fresh_date_is_not_stale_but_still_flagged(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n"
+        "- [ ] mixed dates thing\n"
+        "\t- bad note (verified 2026-13-45)\n"
+        "\t- good note (verified 2026-08-01)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert "mixed dates thing" not in [f["text"] for f in report["stale"]]
+    assert "mixed dates thing" in [f["text"] for f in report["malformed_dates"]]
+
+
+def test_lint_malformed_plus_stale_date_is_stale(tmp_path, monkeypatch):
+    # The malformed note must be ignored, not treated as a fresh
+    # verification that would mask a genuinely stale valid date.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n"
+        "- [ ] mixed stale thing\n"
+        "\t- bad note (verified 2026-13-45)\n"
+        "\t- old note (verified 2020-01-01)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert "mixed stale thing" in [f["text"] for f in report["stale"]]
+
+
+def test_lint_existing_categories_unchanged_by_malformed_dates_addition(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, LINTABLE)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    assert any("2026-09-14" in f["text"] for f in report["dated"])
+    assert [f["text"] for f in report["fragments"]] == ["batteries?"]
+    texts = [f["text"] for f in report["research_candidates"]]
+    assert "check out [thing](https://example.com)" in texts
+    assert "plain idea with no link" not in texts
+    stale = [f["text"] for f in report["stale"]]
+    assert "researched thing" in stale
+    assert "fresh thing" not in stale
+    assert report["malformed_dates"] == []
+
+
 def test_lint_skips_closed_items_entirely(tmp_path, monkeypatch):
     # A checked item that would otherwise trip research_candidates (it has
     # a link) must not appear in any report list -- closed items are not
@@ -1204,6 +1286,7 @@ def test_lint_cli_json_output(tmp_path, monkeypatch, capsys):
         "untiered",
         "research_candidates",
         "stale",
+        "malformed_dates",
     }
     assert any("2026-09-14" in f["text"] for f in data["dated"])
 

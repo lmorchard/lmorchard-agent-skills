@@ -311,6 +311,31 @@ DATE_IN_TEXT_RE = re.compile(
 LINK_RE = re.compile(r"https?://|\]\(")
 
 
+def _verified_dates(item: Item) -> tuple[list[date], bool]:
+    """Parseable (verified YYYY-MM-DD) dates on an item's notes, plus
+    whether any note's date failed to parse.
+
+    VERIFIED_RE matches digit shape only, so a malformed date like
+    2026-13-45 reaches this function. Skip it rather than raising: lint
+    is a read-only inspection command and must not die on a typo in the
+    file it is inspecting. The caller uses the malformed flag to surface
+    the marker under its own `malformed_dates` category instead of
+    silently dropping it or -- worse -- treating the item as if it were
+    never verified at all when it might also carry a good date.
+    """
+    dates: list[date] = []
+    malformed = False
+    for note in item.notes:
+        match = VERIFIED_RE.search(note)
+        if not match:
+            continue
+        try:
+            dates.append(date.fromisoformat(match.group(1)))
+        except ValueError:
+            malformed = True
+    return dates, malformed
+
+
 def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[dict]]:
     """Mechanical smells only -- no content judgment. `research_candidates`
     in particular nominates only what a regex can prove (a URL, a markdown
@@ -325,6 +350,7 @@ def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[
         "untiered": [],
         "research_candidates": [],
         "stale": [],
+        "malformed_dates": [],
     }
     cutoff = date.fromisoformat(today) - timedelta(days=stale_days)
     bucket = None
@@ -343,12 +369,6 @@ def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[
                 report["untiered"].append(entry)
             if LINK_RE.search(item.text) or is_flagged(item):
                 report["research_candidates"].append(entry)
-            verified_dates = [
-                date.fromisoformat(m.group(1))
-                for note in item.notes
-                for m in [VERIFIED_RE.search(note)]
-                if m
-            ]
             # `stale` answers "when was this item last verified?", so the
             # relevant date is the most recent `(verified ...)` note, not
             # the oldest. Re-verifying during an audit only ever appends a
@@ -356,7 +376,13 @@ def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[
             # so comparing against the max is what lets an item actually
             # clear -- comparing against the first note found would leave
             # an old stale note pinning the item forever, with no in-band
-            # way to fix it.
+            # way to fix it. An item with no parseable verified date
+            # (none at all, or only a malformed one) is not stale -- we
+            # genuinely don't know when it was verified, and guessing
+            # would be inventing information.
+            verified_dates, malformed = _verified_dates(item)
+            if malformed:
+                report["malformed_dates"].append(entry)
             if verified_dates and max(verified_dates) < cutoff:
                 report["stale"].append(entry)
     return report
