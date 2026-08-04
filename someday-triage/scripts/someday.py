@@ -376,50 +376,78 @@ def distinctive_terms(item: Item, corpus_counts: dict[str, int]) -> list[str]:
     return words[:3]
 
 
-def find_already_done(doc: Document, haystacks: list[str]) -> list[dict]:
-    """Nominate open items whose distinctive terms turn up in `haystacks`
-    (the archive plus any extra repos). Tuned for recall over precision: a
-    false positive costs one glance, but the false negative this guards
+def find_already_done(doc: Document, haystacks: list[tuple[str, str]]) -> list[dict]:
+    """Nominate open items whose distinctive terms co-occur on a single line
+    somewhere in `haystacks` -- a list of `(source_label, line)` pairs drawn
+    from the archive plus any extra repos. Tuned for recall over precision:
+    a false positive costs one glance, but the false negative this guards
     against -- a finished item left open for months because nobody re-read
-    the archive -- is expensive. Matching at least `len(terms) - 1` (never
-    fewer than 2) rather than requiring all terms lets an item with a
-    slightly reworded blog post title still surface."""
+    the archive -- is expensive.
+
+    Matching used to be against one lowercased blob of all haystack text,
+    which meant two terms could "match" in entirely unrelated files and
+    still count as evidence. On the real 174-item vault that nominated 40%
+    of open items against the archive alone and 95% once ~100 code repos
+    were added -- with that much text, almost any pair of moderately common
+    words co-occurs *somewhere*. Requiring co-occurrence on one line is what
+    makes a match mean something: it's the same fix that makes `similarity`
+    check content-word overlap rather than raw string similarity alone.
+    Raising the match count instead (e.g. requiring all 3 terms) would only
+    have moved the noise floor, not fixed the reasoning error -- a blob is
+    still a blob at 3-of-3.
+    """
     items = open_items(doc)
     counts: dict[str, int] = {}
     for item in items:
         for word in content_words(item.text):
             counts[word] = counts.get(word, 0) + 1
-    blob = "\n".join(haystacks).lower()
     hits = []
     for item in items:
         terms = distinctive_terms(item, counts)
         if not terms:
             continue
-        matched = [t for t in terms if t in blob]
-        if len(matched) >= max(2, len(terms) - 1):
-            hits.append({"id": item.id, "text": item.text, "matched": matched})
+        for source, line in haystacks:
+            lowered = line.lower()
+            matched = [t for t in terms if t in lowered]
+            if len(matched) >= 2:
+                hits.append(
+                    {
+                        "id": item.id,
+                        "text": item.text,
+                        "matched": matched,
+                        "evidence": {"source": source, "line": line[:160]},
+                    }
+                )
+                break
     return hits
 
 
 def cmd_done_check(args) -> int:
     doc, _ = load(source_path())
-    haystacks = []
+    haystacks: list[tuple[str, str]] = []
     if archive_path().exists():
-        haystacks.append(archive_path().read_text(encoding="utf-8"))
+        label = str(archive_path())
+        for line in archive_path().read_text(encoding="utf-8").splitlines():
+            haystacks.append((label, line))
     for root in args.repos:
-        for path in Path(root).rglob("*.md"):
+        root_path = Path(root)
+        for path in root_path.rglob("*.md"):
             if ".git" in path.parts or "node_modules" in path.parts:
                 continue
             try:
-                haystacks.append(path.read_text(encoding="utf-8", errors="ignore"))
+                text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
+            label = str(path.relative_to(root_path))
+            haystacks.extend((label, line) for line in text.splitlines())
     candidates = find_already_done(doc, haystacks)
     if args.json:
         print(json.dumps({"candidates": candidates}, indent=2))
     else:
         for hit in candidates:
+            evidence = hit["evidence"]
             print(f"{hit['id']}  {hit['text']}  (matched: {', '.join(hit['matched'])})")
+            print(f"    {evidence['source']}: {evidence['line']}")
     return 0
 
 

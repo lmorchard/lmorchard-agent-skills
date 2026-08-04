@@ -109,7 +109,7 @@ Pinned so they round-trip and stay greppable in Obsidian:
 - research flag: `- needs-research (YYYY-MM-DD): <the specific question>` — a nested note bullet on the item. Carries its own question so the next run does not re-derive it, and its own date so queue age is visible.
 - verified annotation: a research note bullet ending in `(verified YYYY-MM-DD)`.
 
-`done-check` greps each item's distinctive terms against `someday-done.md` and optionally `~/devel` repos. Tuned for recall over precision: a false positive costs one glance, a false negative cost seven months.
+`done-check` checks each item's distinctive terms against `someday-done.md` and optionally `~/devel` repos, nominating a candidate when at least 2 of an item's terms co-occur on a single line of some file. Tuned for recall over precision: a false positive costs one glance, a false negative cost seven months. (An earlier version matched terms against one lowercased blob of all haystack text with a looser threshold; measured on the real 174-item vault, that nominated 40% of open items from the archive alone and 95% with `--repos ~/devel` added, because enough concatenated text makes almost any pair of common words co-occur *somewhere*. Rejected in favor of the single-line co-occurrence rule above, which keeps the same recall-over-precision intent but requires the match to mean something.)
 
 ## Modes
 

@@ -1177,6 +1177,37 @@ def test_done_check_finds_item_present_in_archive(tmp_path, monkeypatch, capsys)
     texts = [c["text"] for c in data["candidates"]]
     assert "build a mermaid rendering web component for my blog" in texts
     assert "something entirely unrelated to anything" not in texts
+    hit = next(c for c in data["candidates"] if "mermaid" in c["text"])
+    assert set(hit["matched"]) >= {"mermaid", "component"}
+    assert "mermaid" in hit["evidence"]["line"].lower()
+    assert "component" in hit["evidence"]["line"].lower()
+
+
+def test_done_check_does_not_nominate_terms_split_across_lines(
+    tmp_path, monkeypatch, capsys
+):
+    # distinctive_terms for this item are ["rendering", "component", "mermaid"]
+    # (verified above). Each appears somewhere in the archive, but no single
+    # line ever has two of them together -- the co-occurrence requirement
+    # must reject this, where the old blob-matching approach would have
+    # nominated it.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n- [ ] build a mermaid rendering web component for my blog\n",
+    )
+    _seed(
+        tmp_path,
+        "- [x] finished the mermaid diagram thing\n"
+        "- [x] separately built a nice web component elsewhere\n"
+        "- [x] rendering pipeline notes for something else\n",
+        "someday-done.md",
+    )
+    rc = someday.main(["done-check", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    texts = [c["text"] for c in data["candidates"]]
+    assert "build a mermaid rendering web component for my blog" not in texts
 
 
 def test_done_check_searches_extra_dirs(tmp_path, monkeypatch, capsys):
