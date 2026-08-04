@@ -509,3 +509,79 @@ def test_place_leaves_interstitial_tail_behind_in_source_section(tmp_path, monke
     assert aside in intake_body
     assert "another idea" in intake_body
     assert out.index("## blog & site") < out.index("a fresh idea with an aside")
+    assert out.index("a fresh idea with an aside") < out.index("## lights")
+
+
+def test_place_rejects_unknown_bucket_even_with_allow_new_clusters(
+    tmp_path, monkeypatch, capsys
+):
+    # Ruling: a missing bucket is always an error, even with
+    # --allow-new-clusters -- that flag creates clusters, not tiers. This is
+    # a distinct branch from the cluster case (unconditional vs.
+    # allow_new-gated), so it needs its own coverage.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, PLACEABLE)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "nonexistent bucket",
+                "cluster": "blog & site",
+            }
+        ],
+    )
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan), "--allow-new-clusters"])
+    assert rc == 2
+    assert "nonexistent bucket" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_place_leaves_first_item_tail_in_section_body(tmp_path, monkeypatch):
+    # The other half of the tail-transfer rule: when the moved item is
+    # first in its section, its tail has no preceding item to fold into,
+    # so it goes to the section's body instead.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    text = """# intake
+
+- [ ] a fresh idea with an aside
+
+an aside about scope that belongs to neither idea
+
+- [ ] another idea
+
+# tier 1 — quick
+
+## blog & site
+
+- [ ] existing thing
+"""
+    src = _seed(tmp_path, text)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "place",
+                "item": target,
+                "bucket": "tier 1 — quick",
+                "cluster": "blog & site",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan)]) == 0
+    out = src.read_text()
+    intake_body = out.split("# tier 1")[0]
+    destination_body = out.split("## blog & site")[1]
+    aside = "an aside about scope that belongs to neither idea"
+    assert "a fresh idea with an aside" not in intake_body
+    assert aside in intake_body
+    assert "another idea" in intake_body
+    assert aside not in destination_body
+    assert "a fresh idea with an aside" in destination_body
+    assert out.index("existing thing") < out.index("a fresh idea with an aside")

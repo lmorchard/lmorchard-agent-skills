@@ -357,6 +357,15 @@ def apply_place(
     first in its section -- to the section's body. The destination gets the
     item with an empty tail of its own.
     """
+    # Resolve the destination before touching the source. find_section can
+    # raise PlanError (unknown bucket, or unknown cluster without
+    # allow_new); if that happens after the item was already detached from
+    # its source section, it would be orphaned -- present in no section at
+    # all. Doing this lookup first means a failure here leaves `doc`
+    # untouched except, possibly, for a newly created empty cluster (when
+    # allow_new is true) -- a far milder side effect than losing an item,
+    # so don't "fix" this back to removing the item first.
+    destination = find_section(doc, bucket, cluster, allow_new)
     for section in doc.sections:
         if item in section.items:
             idx = section.items.index(item)
@@ -368,7 +377,7 @@ def apply_place(
                 item.tail = []
             section.items.remove(item)
             break
-    find_section(doc, bucket, cluster, allow_new).items.append(item)
+    destination.items.append(item)
 
 
 IN_PLACE_OPS = {"annotate", "retitle", "flag"}
