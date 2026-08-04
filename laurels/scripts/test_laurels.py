@@ -52,6 +52,15 @@ def test_accept_reports_stale_index(tmp_path, monkeypatch, capsys):
     assert "5" in err
 
 
+def test_accept_dedupes_duplicate_indices(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_pending(tmp_path, "- [2026-08-01] (p) keeper")
+    rc = laurels.main(["accept", "0", "0", "--date", "2026-08-03"])
+    assert rc == 0
+    assert (tmp_path / "laurels.md").read_text() == "- [2026-08-03] (p) keeper\n"
+    assert (tmp_path / "pending.md").read_text() == ""
+
+
 def test_format_and_parse_round_trip():
     line = laurels.format_entry(
         "2026-08-03", "obsidian/main", "bidi-only check was the fix"
@@ -99,6 +108,15 @@ def test_add_appends_project_tagged_line(tmp_path, monkeypatch):
     assert text == "- [2026-08-03] (obsidian/main) the fix worked\n"
 
 
+def test_add_rejects_malformed_date(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    rc = laurels.main(["add", "x", "--date", "bad", "--project", "p"])
+    err = capsys.readouterr().err
+    assert rc != 0
+    assert err
+    assert not (tmp_path / "pending.md").exists()
+
+
 def test_add_creates_store_dir(tmp_path, monkeypatch):
     target = tmp_path / "nested" / "laurels"
     monkeypatch.setenv("LAURELS_DIR", str(target))
@@ -127,6 +145,23 @@ def test_show_project_matches_capped_at_two_newest_first(tmp_path, monkeypatch, 
     assert lines == [
         "- [2026-08-03] (p) newest",
         "- [2026-08-02] (p) middle",
+    ]
+
+
+def test_show_orders_by_date_not_append_order(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_laurels(
+        tmp_path,
+        "- [2026-08-03] (p) later",
+        "- [2026-08-01] (p) earlier-but-appended-after",
+    )
+    rc = laurels.main(["show", "--project", "p", "--n", "3", "--seed", "1"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    lines = [entry for entry in out.splitlines() if entry.startswith("- ")]
+    assert lines == [
+        "- [2026-08-03] (p) later",
+        "- [2026-08-01] (p) earlier-but-appended-after",
     ]
 
 

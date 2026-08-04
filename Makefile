@@ -16,7 +16,7 @@ help:
 	@echo "links    - show the current link state of each skill"
 
 test:
-	uv run --with pytest pytest standup-digest/scripts -q
+	uv run --with pytest pytest standup-digest/scripts laurels/scripts -q
 
 standup:
 	python3 standup-digest/scripts/standup_digest.py

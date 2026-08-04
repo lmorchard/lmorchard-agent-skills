@@ -87,6 +87,9 @@ def append_line(path: Path, line: str) -> None:
 
 
 def cmd_add(args) -> int:
+    if args.date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.date):
+        print(f"invalid --date (expected YYYY-MM-DD): {args.date}", file=sys.stderr)
+        return 1
     when = args.date or date.today().isoformat()
     project = args.project or project_slug(args.cwd or os.getcwd())
     append_line(pending_path(), format_entry(when, project, args.text))
@@ -119,6 +122,7 @@ def cmd_pending(args) -> int:
 
 
 def _adjudicate(indices: list[int], accept: bool, when: str) -> int:
+    indices = list(dict.fromkeys(indices))
     lines = _read_pending_lines()
     picked = [lines[i] for i in indices if 0 <= i < len(lines)]
     missing = [i for i in indices if not (0 <= i < len(lines))]
@@ -152,6 +156,7 @@ def cmd_show(args) -> int:
     project = args.project or project_slug(args.cwd or os.getcwd())
     entries = read_entries(laurels_path())
     matched = [e for e in entries if e["project"] == project]
+    matched.sort(key=lambda e: e["date"])
     picked = matched[-2:][::-1]
     others = [e for e in entries if e["project"] != project]
     rng = random.Random(args.seed)
