@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import re
 import subprocess
 import sys
@@ -147,6 +148,29 @@ def cmd_drop(args) -> int:
     return _adjudicate(args.index, accept=False, when="")
 
 
+def cmd_show(args) -> int:
+    project = args.project or project_slug(args.cwd or os.getcwd())
+    entries = read_entries(laurels_path())
+    matched = [e for e in entries if e["project"] == project]
+    picked = matched[-2:][::-1]
+    others = [e for e in entries if e["project"] != project]
+    rng = random.Random(args.seed)
+    cross = rng.choice(others) if others and rng.randint(1, args.n) == 1 else None
+    if not picked and cross is None:
+        return 0
+    lines = ["Laurels — past work that landed well (calibration; nothing to act on):"]
+    for e in picked:
+        lines.append(f"- [{e['date']}] ({e['project']}) {e['text']}")
+    if cross is not None:
+        lines.append(
+            f"- (elsewhere) [{cross['date']}] ({cross['project']}) {cross['text']}"
+        )
+    lines.append("")
+    lines.append('To nominate: laurels.py add "<what worked + why>" — sparingly.')
+    print("\n".join(lines))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="laurels", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -175,11 +199,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_drop.add_argument("index", type=int, nargs="+")
     p_drop.set_defaults(func=cmd_drop)
 
+    p_show = sub.add_parser("show", help="print the SessionStart surface block")
+    p_show.add_argument("--cwd", default="")
+    p_show.add_argument("--project", default="")
+    p_show.add_argument("--n", type=int, default=3, help="1-in-N cross-project chance")
+    p_show.add_argument("--seed", default=None, help="rng seed (testing/determinism)")
+    p_show.set_defaults(func=cmd_show)
+
     return parser
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.func is cmd_show:
+        try:
+            return cmd_show(args)
+        except Exception:
+            return 0
     return args.func(args)
 
 

@@ -104,3 +104,60 @@ def test_add_creates_store_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("LAURELS_DIR", str(target))
     laurels.main(["add", "x", "--project", "p", "--date", "2026-08-03"])
     assert (target / "pending.md").exists()
+
+
+def _seed_laurels(tmp_path, *lines):
+    (tmp_path / "laurels.md").write_text("".join(ln + "\n" for ln in lines))
+
+
+def test_show_project_matches_capped_at_two_newest_first(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_laurels(
+        tmp_path,
+        "- [2026-08-01] (p) oldest",
+        "- [2026-08-02] (p) middle",
+        "- [2026-08-03] (p) newest",
+    )
+    # seed chosen so the cross-project roll misses (no others exist anyway)
+    rc = laurels.main(["show", "--project", "p", "--n", "3", "--seed", "1"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "oldest" not in out
+    lines = [entry for entry in out.splitlines() if entry.startswith("- ")]
+    assert lines == [
+        "- [2026-08-03] (p) newest",
+        "- [2026-08-02] (p) middle",
+    ]
+
+
+def test_show_empty_store_is_silent(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    rc = laurels.main(["show", "--project", "p", "--seed", "1"])
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_show_can_include_cross_project_when_roll_hits(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_laurels(
+        tmp_path,
+        "- [2026-08-01] (p) mine",
+        "- [2026-08-02] (other) theirs",
+    )
+    # find a seed where randint(1, n) == 1; --n 1 guarantees a hit
+    rc = laurels.main(["show", "--project", "p", "--n", "1", "--seed", "0"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "- [2026-08-01] (p) mine" in out
+    assert "(elsewhere)" in out
+    assert "theirs" in out
+
+
+def test_show_swallows_errors(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        laurels,
+        "read_entries",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    assert laurels.main(["show", "--project", "p", "--seed", "1"]) == 0
