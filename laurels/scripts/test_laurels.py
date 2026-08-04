@@ -3,6 +3,55 @@ import subprocess
 import laurels
 
 
+def _seed_pending(tmp_path, *lines):
+    (tmp_path / "pending.md").write_text("".join(line + "\n" for line in lines))
+
+
+def test_pending_filters_by_project(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_pending(
+        tmp_path,
+        "- [2026-08-03] (obsidian/main) a",
+        "- [2026-08-03] (tabs/pilo) b",
+    )
+    rc = laurels.main(["pending", "--project", "obsidian/main"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "0: [2026-08-03] (obsidian/main) a" in out
+    assert "tabs/pilo" not in out
+
+
+def test_accept_moves_to_laurels_with_accept_date(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_pending(
+        tmp_path,
+        "- [2026-08-01] (p) keeper",
+        "- [2026-08-01] (p) dropme",
+    )
+    rc = laurels.main(["accept", "0", "--date", "2026-08-03"])
+    assert rc == 0
+    assert (tmp_path / "laurels.md").read_text() == "- [2026-08-03] (p) keeper\n"
+    assert (tmp_path / "pending.md").read_text() == "- [2026-08-01] (p) dropme\n"
+
+
+def test_drop_removes_without_accepting(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_pending(tmp_path, "- [2026-08-01] (p) x", "- [2026-08-01] (p) y")
+    rc = laurels.main(["drop", "1"])
+    assert rc == 0
+    assert not (tmp_path / "laurels.md").exists()
+    assert (tmp_path / "pending.md").read_text() == "- [2026-08-01] (p) x\n"
+
+
+def test_accept_reports_stale_index(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    _seed_pending(tmp_path, "- [2026-08-01] (p) x")
+    rc = laurels.main(["accept", "5", "--date", "2026-08-03"])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "5" in err
+
+
 def test_format_and_parse_round_trip():
     line = laurels.format_entry(
         "2026-08-03", "obsidian/main", "bidi-only check was the fix"
