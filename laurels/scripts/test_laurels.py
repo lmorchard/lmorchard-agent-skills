@@ -38,3 +38,20 @@ def test_project_slug_resolves_git_worktree_to_repo_root(tmp_path):
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     assert laurels.project_slug(str(repo)) == "myrepo"
+
+
+def test_add_appends_project_tagged_line(tmp_path, monkeypatch):
+    monkeypatch.setenv("LAURELS_DIR", str(tmp_path))
+    rc = laurels.main(
+        ["add", "the fix worked", "--project", "obsidian/main", "--date", "2026-08-03"]
+    )
+    assert rc == 0
+    text = (tmp_path / "pending.md").read_text()
+    assert text == "- [2026-08-03] (obsidian/main) the fix worked\n"
+
+
+def test_add_creates_store_dir(tmp_path, monkeypatch):
+    target = tmp_path / "nested" / "laurels"
+    monkeypatch.setenv("LAURELS_DIR", str(target))
+    laurels.main(["add", "x", "--project", "p", "--date", "2026-08-03"])
+    assert (target / "pending.md").exists()
