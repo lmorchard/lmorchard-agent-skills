@@ -10,6 +10,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 HEADING_RE = re.compile(r"^(#{1,6}) +(.*)$")
@@ -227,6 +228,135 @@ def cmd_status(args) -> int:
     return 0
 
 
+class PlanError(Exception):
+    pass
+
+
+def index_items(doc: Document) -> dict[str, Item]:
+    return {i.id: i for s in doc.sections for i in s.items}
+
+
+def atomic_write(path: Path, text: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def live_origins(doc: Document) -> set[int]:
+    return {i.origin for s in doc.sections for i in s.items}
+
+
+def reconcile(
+    before_origins: set[int], doc: Document, removed_origins: set[int]
+) -> set[int]:
+    """Origins present before but neither still present nor deliberately removed."""
+    return before_origins - live_origins(doc) - removed_origins
+
+
+def apply_annotate(item: Item, notes: list[str]) -> None:
+    item.notes.extend(notes)
+    item.dirty = True
+
+
+def apply_retitle(item: Item, text: str) -> None:
+    item.text = text
+    item.dirty = True
+
+
+def apply_flag(item: Item, question: str, remove: bool, today: str) -> None:
+    item.notes = [n for n in item.notes if not FLAG_RE.match(n)]
+    if not remove:
+        item.notes.append(f"needs-research ({today}): {question}")
+    item.dirty = True
+
+
+IN_PLACE_OPS = {"annotate", "retitle", "flag"}
+
+
+def cmd_apply(args) -> int:
+    src = source_path()
+    doc, text = load(src)
+
+    plan = json.loads(Path(args.plan).read_text())
+    if plan.get("digest") != digest(text):
+        print(
+            f"stale plan: source digest is {digest(text)}, plan expects "
+            f"{plan.get('digest')}. Re-snapshot and rebuild the plan.",
+            file=sys.stderr,
+        )
+        return 2
+
+    items = index_items(doc)
+    unknown = sorted(
+        {
+            ref
+            for op in plan.get("ops", [])
+            for ref in ([op.get("item")] if op.get("item") else [])
+            if ref not in items
+        }
+    )
+    if unknown:
+        print(f"unknown item ids: {', '.join(unknown)}", file=sys.stderr)
+        return 2
+
+    today = args.today or date.today().isoformat()
+    before_origins = {i.origin for i in items.values()}
+    removed_origins: set[int] = set()
+
+    for op in plan.get("ops", []):
+        kind = op["op"]
+        if kind not in IN_PLACE_OPS:
+            print(f"unsupported op: {kind}", file=sys.stderr)
+            return 2
+        item = items[op["item"]]
+        if kind == "annotate":
+            apply_annotate(item, op["notes"])
+        elif kind == "retitle":
+            apply_retitle(item, op["text"])
+        elif kind == "flag":
+            apply_flag(item, op.get("question", ""), op.get("remove", False), today)
+
+    # Two independent checks. The first is exact identity conservation on
+    # `origin`, which survives retitle; the second proves the serializer
+    # emitted something that parses back to the same population.
+    surviving = live_origins(doc)
+    lost = reconcile(before_origins, doc, removed_origins)
+    if lost:
+        print(
+            f"reconciliation failed: {len(lost)} item(s) vanished "
+            f"(origins: {sorted(lost)})",
+            file=sys.stderr,
+        )
+        return 3
+
+    out = serialize(doc)
+    reparsed = parse(out)
+    reparsed_count = sum(len(s.items) for s in reparsed.sections)
+    if reparsed_count != len(surviving):
+        print(
+            f"serializer check failed: {len(surviving)} items in memory but "
+            f"{reparsed_count} after re-parsing the output",
+            file=sys.stderr,
+        )
+        return 3
+
+    print(
+        f"reconciled: {len(before_origins)} in, {len(surviving)} remaining, "
+        f"{len(removed_origins)} archived, 0 unaccounted"
+    )
+    if args.dry_run:
+        print("--- dry run, no write ---")
+        print(out)
+        return 0
+    atomic_write(src, out)
+    print(f"wrote {src}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="someday", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -234,6 +364,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="counts for intake, queue, and buckets")
     p_status.add_argument("--json", action="store_true")
     p_status.set_defaults(func=cmd_status)
+
+    p_apply = sub.add_parser(
+        "apply", help="apply a JSON plan (the only mutating command)"
+    )
+    p_apply.add_argument("plan")
+    p_apply.add_argument("--dry-run", action="store_true")
+    p_apply.add_argument("--today", default="", help="override date (testing)")
+    p_apply.set_defaults(func=cmd_apply)
 
     return parser
 

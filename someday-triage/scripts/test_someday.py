@@ -174,3 +174,116 @@ def test_status_reports_empty_intake(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert data["intake"] == 0
     assert data["needs_research"] == 0
+
+
+BASIC = """# intake
+
+- [ ] a fresh idea
+
+# tier 1 — quick
+
+- [ ] existing thing
+"""
+
+
+def _plan(tmp_path, ops, digest_override=None):
+    src = tmp_path / "pages" / "someday.md"
+    text = src.read_text()
+    plan = {
+        "digest": digest_override or someday.digest(text),
+        "ops": ops,
+    }
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(plan))
+    return path
+
+
+def test_apply_rejects_stale_plan(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    plan = _plan(tmp_path, [], digest_override="000000000000")
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc != 0
+    assert "stale" in capsys.readouterr().err.lower()
+    assert src.read_text() == before
+
+
+def test_apply_rejects_unknown_item_id(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    plan = _plan(tmp_path, [{"op": "retitle", "item": "deadbeef", "text": "nope"}])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc != 0
+    assert "deadbeef" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_dry_run_leaves_file_untouched(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path, [{"op": "annotate", "item": target, "notes": ["first step: x"]}]
+    )
+    before = src.read_text()
+    mtime = src.stat().st_mtime_ns
+    rc = someday.main(["apply", str(plan), "--dry-run"])
+    assert rc == 0
+    assert src.read_text() == before
+    assert src.stat().st_mtime_ns == mtime
+    assert "first step: x" in capsys.readouterr().out
+
+
+def test_atomic_write_leaves_original_intact_on_failure(tmp_path, monkeypatch):
+    target = tmp_path / "f.md"
+    target.write_text("original\n")
+    real_replace = os.replace
+
+    def boom(src, dst):
+        raise OSError("simulated failure")
+
+    monkeypatch.setattr(someday.os, "replace", boom)
+    try:
+        someday.atomic_write(target, "replacement\n")
+    except OSError:
+        pass
+    monkeypatch.setattr(someday.os, "replace", real_replace)
+    assert target.read_text() == "original\n"
+    assert list(tmp_path.glob("*.tmp*")) == []
+
+
+def test_annotate_and_retitle_are_written(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, BASIC)
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {"op": "retitle", "item": target, "text": "a sharpened idea"},
+            {"op": "annotate", "item": target, "notes": ["first step: read the docs"]},
+        ],
+    )
+    assert someday.main(["apply", str(plan)]) == 0
+    out = src.read_text()
+    assert "- [ ] a sharpened idea" in out
+    assert "\t- first step: read the docs" in out
+    assert "a fresh idea" not in out
+
+
+def test_flag_replaces_existing_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, SAMPLE_WITH_FLAG)
+    doc, _ = someday.load(src)
+    flagged = next(i for i in someday.open_items(doc) if someday.is_flagged(i))
+    plan = _plan(
+        tmp_path,
+        [{"op": "flag", "item": flagged.id, "question": "newer question?"}],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    out = src.read_text()
+    assert "needs-research (2026-08-04): newer question?" in out
+    assert "is it maintained?" not in out
