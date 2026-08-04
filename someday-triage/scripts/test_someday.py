@@ -37,6 +37,33 @@ def test_notes_are_collected_regardless_of_indent_style():
     assert handwriting.notes == ["a note indented with spaces, not a tab"]
 
 
+def test_section_footer_is_not_absorbed_by_preceding_item():
+    doc = someday.parse((FIXTURES / "sample.md").read_text())
+    section = next(s for s in doc.sections if s.title == "outings & visits")
+    footer_text = (
+        "*If any of these acquires a date, move it off this list — "
+        "see the LeGuin exhibit in [[someday-done]].*"
+    )
+    assert section.footer == [footer_text]
+    item = next(iter(section.items))
+    assert footer_text not in item.raw
+    assert footer_text not in item.notes
+
+
+def test_dirty_item_still_leaves_section_footer_intact():
+    doc = someday.parse((FIXTURES / "sample.md").read_text())
+    section = next(s for s in doc.sections if s.title == "outings & visits")
+    item = next(iter(section.items))
+    item.dirty = True
+    item.text = "Take the girl to Really Good Stuff sometime, ideally on a weekend"
+    out = someday.serialize(doc)
+    footer_text = (
+        "*If any of these acquires a date, move it off this list — "
+        "see the LeGuin exhibit in [[someday-done]].*"
+    )
+    assert footer_text in out
+
+
 def test_malformed_link_survives_round_trip():
     text = (FIXTURES / "sample.md").read_text()
     assert (

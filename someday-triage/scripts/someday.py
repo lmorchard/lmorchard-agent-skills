@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 HEADING_RE = re.compile(r"^(#{1,6}) +(.*)$")
 ITEM_RE = re.compile(r"^- (?:\[([ xX])\] )?(.*)$")
+INDENTED_RE = re.compile(r"^[ \t]+\S")
 
 
 @dataclass
@@ -28,6 +29,7 @@ class Section:
     raw_heading: str
     body: list[str] = field(default_factory=list)
     items: list[Item] = field(default_factory=list)
+    footer: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -51,6 +53,12 @@ def parse(text: str) -> Document:
     trailing = lines.pop() if lines and lines[-1] == "" else None
     section: Section | None = None
     item: Item | None = None
+    # Once a section's footer has started (a plain line after an item), later
+    # lines keep appending to that same footer run — including blank lines —
+    # rather than snapping back to the item. This is not lookahead: it only
+    # continues a run already in progress, mirroring how an item keeps
+    # absorbing its own trailing blank/indented lines.
+    in_footer = False
     next_origin = 0
 
     for line in lines:
@@ -63,6 +71,7 @@ def parse(text: str) -> Document:
             )
             doc.sections.append(section)
             item = None
+            in_footer = False
             continue
 
         item_match = ITEM_RE.match(line)
@@ -76,13 +85,18 @@ def parse(text: str) -> Document:
             )
             next_origin += 1
             section.items.append(item)
+            in_footer = False
             continue
 
         if item is not None:
-            item.raw.append(line)
-            stripped = line.strip()
-            if stripped.startswith("- "):
-                item.notes.append(stripped[2:])
+            if not in_footer and (line == "" or INDENTED_RE.match(line)):
+                item.raw.append(line)
+                stripped = line.strip()
+                if stripped.startswith("- "):
+                    item.notes.append(stripped[2:])
+            else:
+                section.footer.append(line)
+                in_footer = True
             continue
 
         if section is None:
@@ -101,6 +115,7 @@ def serialize(doc: Document) -> str:
         out.extend(section.body)
         for item in section.items:
             out.extend(render_item(item) if item.dirty else item.raw)
+        out.extend(section.footer)
     text = "\n".join(out)
     if doc.trailing_newline:
         text += "\n"

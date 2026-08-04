@@ -30,3 +30,9 @@ A less aspirational cousin of [[things I might do]]
 # unclear
 
 - batteries?
+
+## outings & visits
+
+- [ ] Take the girl to Really Good Stuff sometime
+
+*If any of these acquires a date, move it off this list — see the LeGuin exhibit in [[someday-done]].*
