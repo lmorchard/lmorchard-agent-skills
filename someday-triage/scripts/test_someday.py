@@ -1243,6 +1243,8 @@ def test_done_check_searches_extra_dirs(tmp_path, monkeypatch, capsys):
 @pytest.mark.parametrize(
     "skipped_relpath",
     [
+        ".git/README.md",
+        "node_modules/pkg/README.md",
         ".superpowers/sdd/plan/notes.md",
         ".venv/lib/site-packages/pkg/README.md",
         "venv/lib/site-packages/pkg/README.md",
