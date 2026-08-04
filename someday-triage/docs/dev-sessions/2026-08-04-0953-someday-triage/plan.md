@@ -48,9 +48,11 @@ Single script file is deliberate: `laurels.py` is 228 lines and does five comman
 **Interfaces:**
 - Consumes: nothing (first task)
 - Produces:
-  - `Item` dataclass: `id: str`, `checked: bool | None`, `text: str`, `notes: list[str]`, `raw: list[str]`, `dirty: bool`
+  - `Item` dataclass: `id: str`, `origin: int`, `checked: bool | None`, `text: str`, `notes: list[str]`, `raw: list[str]`, `dirty: bool`
   - `Section` dataclass: `level: int`, `title: str`, `raw_heading: str`, `body: list[str]`, `items: list[Item]`
-  - `Document` dataclass: `preamble: list[str]`, `sections: list[Section]`
+  - `Document` dataclass: `preamble: list[str]`, `sections: list[Section]`, `trailing_newline: bool`
+
+`origin` is a 0-based sequence number stamped at parse time, in document order. It is **immutable identity**: unlike `id` (a content hash), it survives a `retitle`, which is what makes exact reconciliation possible in Task 3. Nothing else may write it.
   - `parse(text: str) -> Document`
   - `serialize(doc: Document) -> str`
   - `render_item(item: Item) -> list[str]`
@@ -141,6 +143,7 @@ INDENTED_RE = re.compile(r"^[ \t]+\S")
 @dataclass
 class Item:
     id: str = ""
+    origin: int = -1
     checked: bool | None = None
     text: str = ""
     notes: list[str] = field(default_factory=list)
@@ -161,6 +164,7 @@ class Section:
 class Document:
     preamble: list[str] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
+    trailing_newline: bool = False
 
 
 def render_item(item: Item) -> list[str]:
@@ -177,6 +181,7 @@ def parse(text: str) -> Document:
     trailing = lines.pop() if lines and lines[-1] == "" else None
     section: Section | None = None
     item: Item | None = None
+    next_origin = 0
 
     for line in lines:
         heading = HEADING_RE.match(line)
@@ -194,10 +199,12 @@ def parse(text: str) -> Document:
         if item_match and section is not None:
             flag = item_match.group(1)
             item = Item(
+                origin=next_origin,
                 checked=None if flag is None else flag.lower() == "x",
                 text=item_match.group(2),
                 raw=[line],
             )
+            next_origin += 1
             section.items.append(item)
             continue
 
@@ -213,8 +220,7 @@ def parse(text: str) -> Document:
         else:
             section.body.append(line)
 
-    if trailing is not None:
-        doc.trailing_newline = True  # type: ignore[attr-defined]
+    doc.trailing_newline = trailing is not None
     return doc
 
 
@@ -226,7 +232,7 @@ def serialize(doc: Document) -> str:
         for item in section.items:
             out.extend(render_item(item) if item.dirty else item.raw)
     text = "\n".join(out)
-    if getattr(doc, "trailing_newline", False):
+    if doc.trailing_newline:
         text += "\n"
     return text
 ```
@@ -685,6 +691,17 @@ def atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def live_origins(doc: Document) -> set[int]:
+    return {i.origin for s in doc.sections for i in s.items}
+
+
+def reconcile(
+    before_origins: set[int], doc: Document, removed_origins: set[int]
+) -> set[int]:
+    """Origins present before but neither still present nor deliberately removed."""
+    return before_origins - live_origins(doc) - removed_origins
+
+
 def apply_annotate(item: Item, notes: list[str]) -> None:
     item.notes.extend(notes)
     item.dirty = True
@@ -735,7 +752,8 @@ def cmd_apply(args) -> int:
         return 2
 
     today = args.today or date.today().isoformat()
-    before_ids = set(items)
+    before_origins = {i.origin for i in items.values()}
+    removed_origins: set[int] = set()
 
     for op in plan.get("ops", []):
         kind = op["op"]
@@ -750,22 +768,34 @@ def cmd_apply(args) -> int:
         elif kind == "flag":
             apply_flag(item, op.get("question", ""), op.get("remove", False), today)
 
-    out = serialize(doc)
-    after = parse(out)
-    assign_ids(after)
-    after_ids = set(index_items(after))
-    lost = before_ids - after_ids
-    # retitle changes an item's content hash, so an id may legitimately change.
-    # Conservation is on count, not identity, for in-place ops.
-    if len(after_ids) != len(before_ids):
+    # Two independent checks. The first is exact identity conservation on
+    # `origin`, which survives retitle; the second proves the serializer
+    # emitted something that parses back to the same population.
+    surviving = live_origins(doc)
+    lost = reconcile(before_origins, doc, removed_origins)
+    if lost:
         print(
-            f"reconciliation failed: {len(before_ids)} items in, "
-            f"{len(after_ids)} out (lost: {sorted(lost)})",
+            f"reconciliation failed: {len(lost)} item(s) vanished "
+            f"(origins: {sorted(lost)})",
             file=sys.stderr,
         )
         return 3
 
-    print(f"reconciled: {len(before_ids)} in, {len(after_ids)} out, 0 unaccounted")
+    out = serialize(doc)
+    reparsed = parse(out)
+    reparsed_count = sum(len(s.items) for s in reparsed.sections)
+    if reparsed_count != len(surviving):
+        print(
+            f"serializer check failed: {len(surviving)} items in memory but "
+            f"{reparsed_count} after re-parsing the output",
+            file=sys.stderr,
+        )
+        return 3
+
+    print(
+        f"reconciled: {len(before_origins)} in, {len(surviving)} remaining, "
+        f"{len(removed_origins)} archived, 0 unaccounted"
+    )
     if args.dry_run:
         print("--- dry run, no write ---")
         print(out)
@@ -1127,21 +1157,50 @@ def test_merge_keeps_winner_and_archives_loser(tmp_path, monkeypatch):
     assert "collapsed duplicates" in archive
 
 
-def test_reconciliation_catches_a_lost_item(tmp_path, monkeypatch, capsys):
+def test_reconcile_reports_an_item_lost_without_being_recorded():
+    doc = someday.parse("# tier 1 — quick\n\n- [ ] a\n- [ ] b\n- [ ] c\n")
+    before = someday.live_origins(doc)
+    vanished = doc.sections[0].items.pop(1)
+    # Removed but NOT recorded in removed_origins — the exact bug this catches.
+    assert someday.reconcile(before, doc, set()) == {vanished.origin}
+    # Recorded deliberately, so not a loss.
+    assert someday.reconcile(before, doc, {vanished.origin}) == set()
+
+
+def test_serializer_check_blocks_a_write_that_would_lose_items(
+    tmp_path, monkeypatch, capsys
+):
     monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
     src = _seed(tmp_path, MERGEABLE)
-
-    def sabotage(doc):
-        doc.sections[-1].items.pop()
-        return "\n".join(["broken"])
-
-    monkeypatch.setattr(someday, "serialize", sabotage)
+    monkeypatch.setattr(someday, "serialize", lambda doc: "broken\n")
     plan = _plan(tmp_path, [])
     before = src.read_text()
     rc = someday.main(["apply", str(plan)])
     assert rc == 3
-    assert "reconciliation failed" in capsys.readouterr().err
+    assert "serializer check failed" in capsys.readouterr().err
     assert src.read_text() == before
+
+
+def test_archive_is_written_before_source(tmp_path, monkeypatch):
+    """Ordering is load-bearing: a failure must duplicate, never lose."""
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path, [{"op": "archive", "item": target, "reason": "closed", "note": "x"}]
+    )
+    order = []
+    real = someday.atomic_write
+
+    def spy(path, text):
+        order.append(path.name)
+        real(path, text)
+
+    monkeypatch.setattr(someday, "atomic_write", spy)
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    assert order == ["someday-done.md", "someday.md"]
 ```
 
 - [ ] **Step 2: Run and confirm failure**
@@ -1188,7 +1247,6 @@ Collect entries during the op loop, then write both files only after reconciliat
 
 ```python
     archived: dict[str, list[list[str]]] = {}
-    removed: set[str] = set()
 
     def drop(item: Item) -> None:
         for section in doc.sections:
@@ -1196,6 +1254,8 @@ Collect entries during the op loop, then write both files only after reconciliat
                 section.items.remove(item)
                 return
 ```
+
+`removed_origins` already exists from Task 3 — reuse it rather than adding a parallel set keyed on `id`. Item ids are content hashes and change under `retitle`; `origin` does not.
 
 Add these two branches to the op loop:
 
@@ -1207,7 +1267,7 @@ Add these two branches to the op loop:
                 archived.setdefault(reason, []).append(
                     archive_entry(item, op.get("note", ""))
                 )
-                removed.add(item.id)
+                removed_origins.add(item.origin)
                 drop(item)
             elif kind == "merge":
                 winner = items[op["into"]]
@@ -1217,7 +1277,7 @@ Add these two branches to the op loop:
                     archived.setdefault("merged", []).append(
                         archive_entry(loser, f"merged into: {winner.text}")
                     )
-                    removed.add(loser.id)
+                    removed_origins.add(loser.origin)
                     drop(loser)
                 if note:
                     apply_annotate(winner, [note])
@@ -1240,39 +1300,29 @@ Add these two branches to the op loop:
     )
 ```
 
-Replace the reconciliation block with one that accounts for the archive:
+**The reconciliation block from Task 3 needs no change** — it already subtracts `removed_origins`, so archived items are accounted for automatically. This is why `origin` was worth introducing.
+
+Replace only the write section at the end of `cmd_apply`:
 
 ```python
-    out = serialize(doc)
-    after = parse(out)
-    assign_ids(after)
-    remaining = len(index_items(after))
-    expected = len(before_ids) - len(removed)
-    if remaining != expected:
-        print(
-            f"reconciliation failed: {len(before_ids)} in, {remaining} remaining, "
-            f"{len(removed)} archived, expected {expected} remaining",
-            file=sys.stderr,
-        )
-        return 3
-
-    print(
-        f"reconciled: {len(before_ids)} in, {remaining} remaining, "
-        f"{len(removed)} archived, 0 unaccounted"
-    )
     if args.dry_run:
         print("--- dry run, no write ---")
         print(out)
         return 0
-    atomic_write(src, out)
+
+    # Archive FIRST, then the source. If the second write fails, the item
+    # exists in BOTH files — visible and trivially fixable. The reverse order
+    # would leave it in NEITHER, which is the exact failure this design exists
+    # to prevent. Never reorder these two calls.
     if archived:
         append_archive(archive_path(), archived, today)
-        print(f"appended {len(removed)} to {archive_path()}")
+        print(f"appended {len(removed_origins)} to {archive_path()}")
+    atomic_write(src, out)
     print(f"wrote {src}")
     return 0
 ```
 
-Note the ordering: `someday.md` is written first, then the archive is appended. If the second write fails, an item exists in neither file — so the archive append is what must never be skipped. Because `atomic_write` either succeeds or leaves the target untouched, the recovery is to re-run with the same plan against the now-changed digest, which will correctly refuse. Document this in the README as the one manual-recovery case.
+The ordering is load-bearing and the comment says so, because it looks arbitrary and a future reader would otherwise be free to "tidy" it. Worst case under this order is a duplicated item; worst case under the other is a lost one.
 
 - [ ] **Step 5: Run and confirm pass**
 
@@ -1886,9 +1936,12 @@ stale-plan rejection, and atomic write leaving the original intact on failure.
 
 ## Recovery
 
-`apply` writes `someday.md` first, then appends to `someday-done.md`. If the second write
-fails, archived items exist in neither file. Recover from the `obsidian-main-backup` repo — the
-vault's own `.git` is empty because Syncthing does not carry git internals.
+`apply` appends to `someday-done.md` **before** writing `someday.md`, deliberately. If the
+second write fails, an archived item exists in both files — visible and trivially fixable. The
+reverse order would leave it in neither. Do not reorder those two writes.
+
+If you do need history, use the `obsidian-main-backup` repo — the vault's own `.git` is an empty
+directory, because Syncthing carries files but not git internals.
 ```
 
 - [ ] **Step 3: Verify the skill links and is discoverable**
@@ -1923,4 +1976,8 @@ git commit -m "feat(someday-triage): skill procedure and README"
 
 **Type consistency.** `Item.checked` is `bool | None` throughout — `None` for non-checkbox fragments, and `checked is not True` is the open-item test everywhere so fragments count as open. `find_section` takes `allow_new` in every call site. `apply_flag` takes `today` explicitly rather than reading the clock, so tests can pin it. `content_words` is defined in Task 6 and reused by Task 8; if Task 8 is implemented first, move that helper up.
 
-**Known rough edge.** Task 3's reconciliation compares counts, not identities, because `retitle` legitimately changes an item's content-hash id. That means a plan which retitles one item and drops another would net to the same count and pass. Task 5 tightens this by tracking `removed` explicitly, so the final form checks `remaining == len(before) - len(removed)`. The weaker check exists only between Tasks 3 and 5; do not ship Phase 1 as complete before Task 5.
+**Amendments made 2026-08-04 after a pre-flight review, before any code was written.** Three items where the plan's first draft mandated something a reviewer would rightly flag:
+
+1. `Document.trailing_newline` was a dynamic attribute set with a `# type: ignore`. Now a declared field. Identical behaviour, no smell.
+2. Reconciliation compared item *counts*, which a retitle-plus-drop plan could satisfy while losing an item. Now `Item.origin` — an immutable parse-order sequence number — gives exact identity conservation via `reconcile()`, which is unit-tested directly rather than only through the CLI. This removed the staged weakness entirely, so Task 5 no longer needs its own reconciliation variant.
+3. **The write order was a real durability bug.** The draft wrote `someday.md` first and appended the archive second, so a failure between them destroyed the item. Reversed: worst case is now a duplicate, not a loss. There is a test asserting the order, because the correct order looks arbitrary and invites tidying.
