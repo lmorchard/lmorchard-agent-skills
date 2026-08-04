@@ -1734,6 +1734,34 @@ Expected: FAIL — `done-check` subcommand missing
 - [ ] **Step 3: Implement**
 
 ```python
+# Directories `done-check --repos` never descends into. `.superpowers` holds
+# this project's own dev-session reports -- including done-check's own past
+# output -- so scanning it let the tool "confirm" a candidate by matching
+# text it had written about that same candidate earlier (measured: 56 of 165
+# hits in one real run were the tool matching itself). `.venv`/`venv`/
+# `dist`/`build`/`__pycache__`/`.tox` are vendored or generated content, not
+# anyone's authored evidence of anything. Don't prune this list thinking
+# it's arbitrary -- every entry here blocks a real self-confirmation loop
+# found by testing against ~100 real repos.
+DONE_CHECK_SKIP_DIRS = frozenset({
+    ".git", "node_modules", ".superpowers", ".venv", "venv",
+    "dist", "build", "__pycache__", ".tox",
+})
+
+
+def _is_done_check_excluded(path: Path) -> bool:
+    """True if `path` falls under a skipped directory, or under this
+    project's own `docs/dev-sessions` tree -- the same self-confirmation
+    failure mode as `.superpowers`, just under a project-specific name."""
+    parts = path.parts
+    if any(part in DONE_CHECK_SKIP_DIRS for part in parts):
+        return True
+    return any(
+        parts[i] == "docs" and parts[i + 1] == "dev-sessions"
+        for i in range(len(parts) - 1)
+    )
+
+
 def distinctive_terms(item: Item, corpus_counts: dict[str, int]) -> list[str]:
     words = [w for w in content_words(item.text) if len(w) > 3]
     words.sort(key=lambda w: (corpus_counts.get(w, 0), -len(w)))
@@ -1775,7 +1803,7 @@ def cmd_done_check(args) -> int:
     for root in args.repos:
         root_path = Path(root)
         for path in root_path.rglob("*.md"):
-            if ".git" in path.parts or "node_modules" in path.parts:
+            if _is_done_check_excluded(path):
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
@@ -1808,11 +1836,52 @@ one glance — it just needed a locality constraint to mean something. Each
 candidate also now carries `evidence: {"source", "line"}` so a human can see
 *why* it was nominated without re-deriving it.
 
+**A second bug surfaced after the co-occurrence fix: self-confirmation.**
+`.superpowers/sdd/plan/` (this project's own dev-session reports, including
+done-check's own prior output) sits inside the `~/devel` tree that
+`--repos` scans, so the tool could match text it had written about a
+candidate in an earlier run and treat that as independent evidence. Fixed
+by excluding `.superpowers`, `.venv`, `venv`, `dist`, `build`,
+`__pycache__`, `.tox`, and this project's own `docs/dev-sessions/` tree, on
+top of the pre-existing `.git`/`node_modules` skip.
+
+**`done-check` (no `--repos`) is the supported path for routine intake; a
+full-vault run is naturally noisier and `--repos` is audit-only, not fixed
+further.** Intake only ever runs `done-check` on the handful of new intake
+items, where a false-positive rate that looks alarming across the whole
+174-item vault yields close to zero spurious hits on 2-3 new items.
+Measured after the self-confirmation fix: archive-only nominates roughly
+10% of *all* open items (not just intake) in a full-vault audit run, and
+`--repos ~/devel` (~100 code repos) nominates roughly 60% — because
+`distinctive_terms` ranks rarity *within the vault*, and words rare in a
+todo list (`build`, `check`, `system`, `agent`) are common in software
+documentation, so they co-occur across a large enough pile of markdown by
+chance. The principled fix (rank rarity against the haystack, not the
+vault) is deliberately not being spent here — the archive is a curated
+record of completed work, but a hundred code repos are just prose, and
+scanning them for "have I done this" was always a stretch. `--repos` stays
+available for a deliberate audit with noise expected, documented as such in
+its `--help` text.
+
+**A false-positive class this can never fix: recurring tasks.** `Dentist
+appointment` is open now and `- [x] dentist appointment` is in the archive
+from an earlier cycle — both true, because the task recurs. Same shape for
+`haircut appointment` and `Clean furnace filter`. `done-check` cannot tell
+"already finished" from "finished before, due again": the evidence is
+genuinely identical either way. This isn't a threshold problem and isn't
+worth trying to detect in code — it's a judgment call Task 9's `SKILL.md`
+must make explicit: **never propose archiving a recurring task (appointments,
+filter changes, haircuts, renewals) on a `done-check` hit alone.**
+
 Register:
 
 ```python
     p_done = sub.add_parser("done-check", help="items that may already be finished")
-    p_done.add_argument("--repos", nargs="*", default=[])
+    p_done.add_argument(
+        "--repos", nargs="*", default=[],
+        help="also scan these dirs' *.md files as evidence -- audit only, "
+        "noisy by design (see spec)",
+    )
     p_done.add_argument("--json", action="store_true")
     p_done.set_defaults(func=cmd_done_check)
 ```

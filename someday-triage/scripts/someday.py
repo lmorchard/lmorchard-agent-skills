@@ -366,6 +366,45 @@ def cmd_lint(args) -> int:
     return 0
 
 
+# Directories `done-check --repos` never descends into. `.superpowers` holds
+# this project's own dev-session reports -- including done-check's own past
+# output -- so scanning it let the tool "confirm" a candidate by matching
+# text it had written about that same candidate earlier (measured: 56 of 165
+# hits in one real run were the tool matching itself). `.venv`/`venv`/
+# `dist`/`build`/`__pycache__`/`.tox` are vendored or generated content, not
+# anyone's authored evidence of anything. Don't prune this list thinking
+# it's arbitrary -- every entry here blocks a real self-confirmation loop
+# found by testing against ~100 real repos.
+DONE_CHECK_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        ".superpowers",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        "__pycache__",
+        ".tox",
+    }
+)
+
+
+def _is_done_check_excluded(path: Path) -> bool:
+    """True if `path` falls under a skipped directory, or under this
+    project's own `docs/dev-sessions` tree -- the same self-confirmation
+    failure mode as `.superpowers`, just under a project-specific name
+    rather than a generic one, so it isn't folded into the shared constant.
+    """
+    parts = path.parts
+    if any(part in DONE_CHECK_SKIP_DIRS for part in parts):
+        return True
+    return any(
+        parts[i] == "docs" and parts[i + 1] == "dev-sessions"
+        for i in range(len(parts) - 1)
+    )
+
+
 def distinctive_terms(item: Item, corpus_counts: dict[str, int]) -> list[str]:
     """The item's rarest content words -- rare words identify a topic;
     common ones (shared across many open items) do not. Ties broken toward
@@ -432,7 +471,7 @@ def cmd_done_check(args) -> int:
     for root in args.repos:
         root_path = Path(root)
         for path in root_path.rglob("*.md"):
-            if ".git" in path.parts or "node_modules" in path.parts:
+            if _is_done_check_excluded(path):
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="ignore")
@@ -889,7 +928,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_lint.set_defaults(func=cmd_lint)
 
     p_done = sub.add_parser("done-check", help="items that may already be finished")
-    p_done.add_argument("--repos", nargs="*", default=[])
+    p_done.add_argument(
+        "--repos",
+        nargs="*",
+        default=[],
+        help=(
+            "also scan these dirs' *.md files as evidence -- audit only, "
+            "not for routine intake: the archive is a curated record of "
+            "finished work, but a pile of code repos is just prose, and "
+            'common code/doc vocabulary ("build", "check", "system", '
+            '"agent"...) co-occurs across it by chance. Measured on '
+            "~100 real repos: roughly 60%% of open items got nominated, "
+            "versus roughly 10%% from the archive alone. Expect noise; "
+            "review every evidence line."
+        ),
+    )
     p_done.add_argument("--json", action="store_true")
     p_done.set_defaults(func=cmd_done_check)
 

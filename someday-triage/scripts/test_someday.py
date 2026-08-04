@@ -1223,3 +1223,36 @@ def test_done_check_searches_extra_dirs(tmp_path, monkeypatch, capsys):
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert any("wayback" in c["text"] for c in data["candidates"])
+
+
+@pytest.mark.parametrize(
+    "skipped_relpath",
+    [
+        ".superpowers/sdd/plan/notes.md",
+        ".venv/lib/site-packages/pkg/README.md",
+        "venv/lib/site-packages/pkg/README.md",
+        "dist/README.md",
+        "build/README.md",
+        "__pycache__/README.md",
+        ".tox/py313/README.md",
+        "docs/dev-sessions/2026-01-01-thing/notes.md",
+    ],
+)
+def test_done_check_skips_self_confirmation_dirs(
+    tmp_path, monkeypatch, capsys, skipped_relpath
+):
+    # A prior real-vault run found the tool matching its own dev-session
+    # reports living inside the scanned tree -- pure self-confirmation, not
+    # evidence. This pins that each of the excluded directories is actually
+    # excluded, not merely documented.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "# tier 1 — quick\n\n- [ ] wayback machine link fixer\n")
+    _seed(tmp_path, "nothing here\n", "someday-done.md")
+    repo = tmp_path / "repo"
+    skipped_file = repo / skipped_relpath
+    skipped_file.parent.mkdir(parents=True)
+    skipped_file.write_text("finished the wayback machine link fixer last week\n")
+    rc = someday.main(["done-check", "--repos", str(repo), "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data["candidates"] == []

@@ -111,6 +111,12 @@ Pinned so they round-trip and stay greppable in Obsidian:
 
 `done-check` checks each item's distinctive terms against `someday-done.md` and optionally `~/devel` repos, nominating a candidate when at least 2 of an item's terms co-occur on a single line of some file. Tuned for recall over precision: a false positive costs one glance, a false negative cost seven months. (An earlier version matched terms against one lowercased blob of all haystack text with a looser threshold; measured on the real 174-item vault, that nominated 40% of open items from the archive alone and 95% with `--repos ~/devel` added, because enough concatenated text makes almost any pair of common words co-occur *somewhere*. Rejected in favor of the single-line co-occurrence rule above, which keeps the same recall-over-precision intent but requires the match to mean something.)
 
+`--repos` skips `.git`, `node_modules`, `.superpowers`, `.venv`, `venv`, `dist`, `build`, `__pycache__`, `.tox`, and this project's own `docs/dev-sessions/` tree — without that, the tool matches its own dev-session reports (which quote real item text) as if they were independent evidence of completion. That bug alone accounted for a third of one real audit run's hits.
+
+Even with that fixed, `--repos` stays noisy by design and is audit-only, not part of routine intake: intake only ever runs `done-check` on the 2-3 new intake items in a run, where noise is negligible, while a full-vault audit run measures roughly 10% of all open items nominated from the archive alone versus roughly 60% with `--repos ~/devel` (~100 code repos) added. The gap is `distinctive_terms` ranking rarity *within the vault* — words rare in a todo list (`build`, `check`, `system`, `agent`) are common in software documentation, so a large enough pile of markdown makes them co-occur by chance. The principled fix (rank against the haystack, not the vault) is not being built: the archive is a curated record of finished work, a hundred code repos are just prose, and scanning them for "have I done this" was always a stretch. Use `--repos` for a deliberate audit with noise expected, not routine intake.
+
+`done-check` cannot distinguish "already finished" from "finished before, due again" — a recurring task (an appointment, a filter change, a renewal) legitimately shows up both open and in the archive, and no threshold fixes that because the evidence is genuinely identical. **Never propose archiving a recurring task on a `done-check` hit alone.**
+
 ## Modes
 
 ### `intake` (default, run often)
