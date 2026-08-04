@@ -1715,6 +1715,50 @@ def test_apply_rejects_merge_from_that_is_not_a_list(tmp_path, monkeypatch, caps
     assert src.read_text() == before
 
 
+@pytest.mark.parametrize(
+    "remove, expected_rc",
+    [("false", 2), (1, 2), (True, 0), (False, 0)],
+    ids=["string-false", "int-one", "real-true", "real-false"],
+)
+def test_apply_validates_the_remove_flag_as_a_bool(
+    tmp_path, monkeypatch, capsys, remove, expected_rc
+):
+    # `remove` was the one field cmd_apply reads that nothing type-checked,
+    # and it is consumed as bare truthiness: `"remove": "false"` (or `1`) is
+    # truthy, so apply_flag took the removal branch -- deleting the item's
+    # existing needs-research note, writing no replacement, exit 0, "0
+    # unaccounted". Same class as the notes-as-a-string corruption: a write
+    # that reconciles clean because item identity is untouched. isinstance
+    # against bool is what separates these from a real true/false, since
+    # isinstance(1, bool) is False while isinstance(True, int) is True.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, SAMPLE_WITH_FLAG)
+    doc, _ = someday.load(src)
+    flagged = next(i for i in someday.open_items(doc) if someday.is_flagged(i))
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "flag",
+                "item": flagged.id,
+                "remove": remove,
+                "question": "newer question?",
+            }
+        ],
+    )
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan), "--today", "2026-08-04"])
+    assert rc == expected_rc
+    if expected_rc == 2:
+        assert "remove" in capsys.readouterr().err
+        assert src.read_text() == before
+        assert "is it maintained?" in src.read_text()
+    elif remove:
+        assert "needs-research" not in src.read_text()
+    else:
+        assert "needs-research (2026-08-04): newer question?" in src.read_text()
+
+
 def test_apply_rejects_a_non_object_op(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
     src = _seed(tmp_path, MERGEABLE)

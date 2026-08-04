@@ -811,6 +811,12 @@ STR_FIELDS = (
     "text",
 )
 STR_LIST_FIELDS = ("notes", "from")
+# `remove` is read as bare truthiness (`op.get("remove", False)`), so a
+# non-bool that happens to be truthy -- "false", 0 vs 1, anything -- silently
+# takes the removal branch: the item's existing needs-research note is deleted
+# and no replacement written. Checked against `bool` specifically, which is
+# what separates a real true/false from `1` (isinstance(1, bool) is False).
+BOOL_FIELDS = ("remove",)
 
 
 def op_refs(op: dict) -> list[str]:
@@ -837,6 +843,10 @@ def _validate_op_types(ops: list) -> None:
     can see it, because item identity is untouched; the content is simply
     wrong. `"text": 42` writes `- [ ] 42` the same way, and a string `from`
     would make the unknown-id check report single letters. Refuse, don't write.
+
+    The three field tuples must between them cover every key `cmd_apply`
+    reads. `remove` was missed on the first pass and cost exactly this bug;
+    when you add an op field, add it to a tuple in the same commit.
     """
     for n, op in enumerate(ops):
         if not isinstance(op, dict):
@@ -854,6 +864,12 @@ def _validate_op_types(ops: list) -> None:
             if value is not None and not isinstance(value, str):
                 raise PlanError(
                     f"op {n}: {key} must be a string, got {type(value).__name__}"
+                )
+        for key in BOOL_FIELDS:
+            value = op.get(key)
+            if value is not None and not isinstance(value, bool):
+                raise PlanError(
+                    f"op {n}: {key} must be true or false, got {type(value).__name__}"
                 )
 
 

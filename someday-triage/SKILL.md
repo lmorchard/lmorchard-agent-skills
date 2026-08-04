@@ -216,8 +216,9 @@ Two rules about plan *shape*, both enforced before anything is written:
   op, where they still reach the archive entry; a removing op is the last word on its item, and one
   item gets at most one.
 - **Field types are checked.** `notes` and `from` must be lists of strings; `item`, `into`,
-  `bucket`, `cluster`, `reason`, `question`, `note`, `text` must be strings. `"notes": "buy it"` is
-  refused, not spread one character per bullet.
+  `bucket`, `cluster`, `reason`, `question`, `note`, `text` must be strings; `remove` must be a
+  real `true`/`false`. `"notes": "buy it"` is refused, not spread one character per bullet, and
+  `"remove": "false"` is refused rather than read as truthy and clearing the flag.
 
 Exit codes: `0` success, `2` plan rejected (bad JSON, stale digest, unknown id, unknown bucket or
 cluster, unknown reason, unsupported op, an op after the one that removes its item, a wrongly typed
