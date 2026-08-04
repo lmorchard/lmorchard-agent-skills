@@ -1638,6 +1638,24 @@ def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[
                 report["untiered"].append(entry)
             if LINK_RE.search(item.text) or is_flagged(item):
                 report["research_candidates"].append(entry)
+            # Amended after Task 7 landed: the original version below broke
+            # after the *first* stale note it found, which meant staleness
+            # was decided by the oldest `(verified ...)` date on an item.
+            # Since no op edits or removes an existing note, re-verifying
+            # during an audit only ever appends a fresh note beside the old
+            # one -- so under the original rule an item could never clear
+            # `stale` once it had one old note, with no in-band fix. The
+            # corrected rule compares the *most recent* verified date
+            # against the cutoff instead:
+            #
+            #     verified_dates = [
+            #         date.fromisoformat(m.group(1))
+            #         for note in item.notes
+            #         for m in [VERIFIED_RE.search(note)]
+            #         if m
+            #     ]
+            #     if verified_dates and max(verified_dates) < cutoff:
+            #         report["stale"].append(entry)
             for note in item.notes:
                 found = VERIFIED_RE.search(note)
                 if found and date.fromisoformat(found.group(1)) < cutoff:
@@ -1965,8 +1983,11 @@ Run everything from the repo containing this skill, or use an absolute path to t
 Runs intake first, then, because pruning already happens at intake, this is mostly maintenance:
 
 1. `lint --json` and `dupes --json` over the whole file; `done-check --repos ~/devel`.
-2. **Stale-annotation sweep — the main job.** Re-verify notes whose `(verified …)` date is past
-   the threshold. Stock counts, version numbers, and "actively maintained" all rot.
+2. **Stale-annotation sweep — the main job.** Re-verify items whose *most recent*
+   `(verified …)` date is past the threshold. Stock counts, version numbers, and
+   "actively maintained" all rot. (An earlier version of this rule compared the *oldest*
+   verified date instead, which made staleness permanent and unclearable once an item
+   picked up one old note — see the Task 7 amendment above.)
 3. Route anything date-bound out of the list.
 4. Propose cluster restructuring if clusters have drifted lopsided.
 5. Apply, then write findings to the journal via the `journal-note` skill.

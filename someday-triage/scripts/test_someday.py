@@ -1099,6 +1099,10 @@ def test_lint_flags_untiered_items_before_any_level_one_heading(tmp_path, monkey
 
 
 def test_lint_stale_reports_item_once_despite_two_stale_notes(tmp_path, monkeypatch):
+    # Multiple stale (verified ...) notes on one item must still yield a
+    # single stale report entry -- the count-of-one guarantee holds because
+    # "stale" is decided from the max verified date across all notes, not
+    # by stopping at the first note found.
     monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
     _seed(
         tmp_path,
@@ -1111,6 +1115,50 @@ def test_lint_stale_reports_item_once_despite_two_stale_notes(tmp_path, monkeypa
     report = someday.lint_document(doc, "2026-08-04", 180)
     stale_texts = [f["text"] for f in report["stale"]]
     assert stale_texts.count("double stale thing") == 1
+
+
+def test_lint_stale_uses_most_recent_verified_date_not_the_first(tmp_path, monkeypatch):
+    # This is the regression case that makes audit mode actually work: no
+    # operation can edit or remove an existing note, so the only way to
+    # re-verify an item during an audit is to append a fresh
+    # (verified ...) note. If staleness were decided by the first note
+    # found (or the oldest), an item with an old stale note and a new
+    # in-window note would stay stuck under `lint --stale` forever, with no
+    # in-band way to clear it. Staleness must be decided by the *most
+    # recent* verified date.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n"
+        "- [ ] re-verified thing\n"
+        "\t- alive (verified 2020-01-01)\n"
+        "\t- still alive (verified 2026-08-01)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    stale_texts = [f["text"] for f in report["stale"]]
+    assert "re-verified thing" not in stale_texts
+
+
+def test_lint_stale_still_flags_item_whose_only_note_is_old(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(
+        tmp_path,
+        "# tier 1 — quick\n\n- [ ] old thing\n\t- alive (verified 2020-01-01)\n",
+    )
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    stale_texts = [f["text"] for f in report["stale"]]
+    assert "old thing" in stale_texts
+
+
+def test_lint_stale_does_not_flag_item_with_no_verified_note(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "# tier 1 — quick\n\n- [ ] never checked thing\n")
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    report = someday.lint_document(doc, "2026-08-04", 180)
+    stale_texts = [f["text"] for f in report["stale"]]
+    assert "never checked thing" not in stale_texts
 
 
 def test_lint_skips_closed_items_entirely(tmp_path, monkeypatch):

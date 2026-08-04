@@ -343,11 +343,22 @@ def lint_document(doc: Document, today: str, stale_days: int) -> dict[str, list[
                 report["untiered"].append(entry)
             if LINK_RE.search(item.text) or is_flagged(item):
                 report["research_candidates"].append(entry)
-            for note in item.notes:
-                found = VERIFIED_RE.search(note)
-                if found and date.fromisoformat(found.group(1)) < cutoff:
-                    report["stale"].append(entry)
-                    break
+            verified_dates = [
+                date.fromisoformat(m.group(1))
+                for note in item.notes
+                for m in [VERIFIED_RE.search(note)]
+                if m
+            ]
+            # `stale` answers "when was this item last verified?", so the
+            # relevant date is the most recent `(verified ...)` note, not
+            # the oldest. Re-verifying during an audit only ever appends a
+            # fresh note (no operation edits or removes an existing one),
+            # so comparing against the max is what lets an item actually
+            # clear -- comparing against the first note found would leave
+            # an old stale note pinning the item forever, with no in-band
+            # way to fix it.
+            if verified_dates and max(verified_dates) < cutoff:
+                report["stale"].append(entry)
     return report
 
 

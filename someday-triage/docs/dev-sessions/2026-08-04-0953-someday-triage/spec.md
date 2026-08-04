@@ -100,7 +100,7 @@ someday.py apply PLAN  [--dry-run]             the only mutating command
 - items outside any tier
 - notes orphaned from their item
 - **research candidates**: the script detects only what it can do reliably — items containing a URL or a markdown link, and items with a `needs-research` flag. Recognizing that "get a vectrex flash card" names a purchasable product with no link attached is model work. The script nominates; the model adds to the list. Overstating what the regex can do here would produce a queue that misses exactly the items that most need checking.
-- **stale annotations**: notes whose `(verified YYYY-MM-DD)` date is older than the staleness threshold (default 180 days, `--stale-days`)
+- **stale annotations**: items whose *most recent* `(verified YYYY-MM-DD)` note is older than the staleness threshold (default 180 days, `--stale-days`). (An earlier version of this rule compared the *oldest* verified date instead; since no op edits or removes an existing note, re-verifying only ever appends a fresh note, so comparing against the oldest made staleness permanent and unclearable. Fixed post-Task-7.)
 
 ### Marker formats
 
@@ -136,7 +136,7 @@ Even with that fixed, `--repos` stays noisy by design and is audit-only, not par
 Runs `intake` first, then:
 
 1. `lint` and `dupes` across the whole file; `done-check --repos ~/devel`.
-2. **Stale-annotation sweep** — the primary job. Research facts rot: stock counts, version numbers, "actively maintained." Items whose `(verified …)` date is past threshold get re-verified.
+2. **Stale-annotation sweep** — the primary job. Research facts rot: stock counts, version numbers, "actively maintained." Items whose most recent `(verified …)` date is past threshold get re-verified.
 3. Expiry sweep: anything date-bound routed out.
 4. Cluster drift: propose restructuring if clusters have grown lopsided or incoherent.
 5. Apply, then write findings to the journal via `journal-note`.

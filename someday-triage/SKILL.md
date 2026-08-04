@@ -114,10 +114,12 @@ Runs intake first. Because pruning already happens at intake, the rest is mainte
      staleness mechanism silently never fires.
    - **Later runs:** re-verify anything `lint` reports under `stale` and `annotate` the fresh
      finding with today's date.
-   - Known limitation: no op edits an existing note line, so re-verification *appends* a dated
-     note beside the old one — and `lint` reports an item as stale if *any* of its notes is past
-     the cutoff. Expect re-verified items to keep appearing under `stale` until the op set grows
-     a way to retire a note. Do not work around this by hand-editing the file.
+   - No op edits or removes an existing note line, so re-verification *appends* a fresh
+     `(verified YYYY-MM-DD)` note beside the old one rather than replacing it. `lint` decides
+     staleness from the **most recent** `(verified …)` date on an item, not the oldest, so the
+     new note is what counts — the item clears on the next `lint` once it carries a date inside
+     the window, and the old note is just left in place as history. Do not work around this by
+     hand-editing the file.
 3. Expiry sweep: route anything date-bound out of the list (`lint`'s `dated` category).
 4. Cluster drift: propose restructuring where clusters have grown lopsided or incoherent. New
    clusters require `apply --allow-new-clusters`.
