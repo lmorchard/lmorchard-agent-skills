@@ -541,6 +541,122 @@ def test_place_rejects_unknown_bucket_even_with_allow_new_clusters(
     assert src.read_text() == before
 
 
+MERGEABLE = """# intake
+
+- [ ] dead on arrival thing
+
+# tier 1 — quick
+
+## lights
+
+- [ ] Led strip for under bar
+- [ ] led strip for UNDER bar
+"""
+
+
+def test_archive_moves_item_to_archive_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(
+        tmp_path,
+        "Completed items from [[someday]]\n\n- [x] old thing\n",
+        "someday-done.md",
+    )
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "archive",
+                "item": target,
+                "reason": "closed",
+                "note": "abandoned upstream, 358 open issues",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    assert "dead on arrival thing" not in src.read_text()
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert "old thing" in archive
+    assert "dead on arrival thing" in archive
+    assert "abandoned upstream, 358 open issues" in archive
+    assert "closed by research" in archive
+
+
+def test_merge_keeps_winner_and_archives_loser(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    items = {i.text: i for s in doc.sections for i in s.items}
+    winner = items["Led strip for under bar"].id
+    loser = items["led strip for UNDER bar"].id
+    plan = _plan(
+        tmp_path,
+        [
+            {
+                "op": "merge",
+                "into": winner,
+                "from": [loser],
+                "note": "duplicate wording",
+            }
+        ],
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    out = src.read_text()
+    assert out.count("nder bar") == 1
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert "led strip for UNDER bar" in archive
+    assert "collapsed duplicates" in archive
+
+
+def test_reconcile_reports_an_item_lost_without_being_recorded():
+    doc = someday.parse("# tier 1 — quick\n\n- [ ] a\n- [ ] b\n- [ ] c\n")
+    before = someday.live_origins(doc)
+    vanished = doc.sections[0].items.pop(1)
+    # Removed but NOT recorded in removed_origins — the exact bug this catches.
+    assert someday.reconcile(before, doc, set()) == {vanished.origin}
+    # Recorded deliberately, so not a loss.
+    assert someday.reconcile(before, doc, {vanished.origin}) == set()
+
+
+def test_serializer_check_blocks_a_write_that_would_lose_items(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    monkeypatch.setattr(someday, "serialize", lambda doc: "broken\n")
+    plan = _plan(tmp_path, [])
+    before = src.read_text()
+    rc = someday.main(["apply", str(plan)])
+    assert rc == 3
+    assert "serializer check failed" in capsys.readouterr().err
+    assert src.read_text() == before
+
+
+def test_archive_is_written_before_source(tmp_path, monkeypatch):
+    """Ordering is load-bearing: a failure must duplicate, never lose."""
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path, [{"op": "archive", "item": target, "reason": "closed", "note": "x"}]
+    )
+    order = []
+    real = someday.atomic_write
+
+    def spy(path, text):
+        order.append(path.name)
+        real(path, text)
+
+    monkeypatch.setattr(someday, "atomic_write", spy)
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    assert order == ["someday-done.md", "someday.md"]
+
+
 def test_place_leaves_first_item_tail_in_section_body(tmp_path, monkeypatch):
     # The other half of the tail-transfer rule: when the moved item is
     # first in its section, its tail has no preceding item to fold into,

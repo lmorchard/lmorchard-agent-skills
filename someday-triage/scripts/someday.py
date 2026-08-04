@@ -344,28 +344,16 @@ def find_section(
     return created
 
 
-def apply_place(
-    doc: Document, item: Item, bucket: str, cluster: str | None, allow_new: bool
-) -> None:
-    """Move `item` out of its current section into the bucket/cluster named.
-    The item keeps its `origin` (identity) and `dirty` stays False, so its
-    original lines are emitted verbatim in the new location -- moving must
-    not rewrite text. `item.tail` is section context (interstitial prose or
-    blank padding) that happens to sit after this item, not part of the
-    item, so it does not travel: it is left behind in the source section,
-    appended to the preceding item's tail, or -- if the moved item was
-    first in its section -- to the section's body. The destination gets the
-    item with an empty tail of its own.
+def _detach(doc: Document, item: Item) -> None:
+    """Remove `item` from whichever section holds it. `item.tail` is
+    section context (interstitial prose or blank padding) that happens to
+    sit after this item, not part of the item, so it does not travel: it is
+    left behind, appended to the preceding item's tail, or -- if the item
+    was first in its section -- to the section's body. `Section.footer` is
+    never touched here; it belongs to the section, not any item. Shared by
+    every op that takes an item out of its section outright (place,
+    archive, merge) so this transfer rule lives in exactly one place.
     """
-    # Resolve the destination before touching the source. find_section can
-    # raise PlanError (unknown bucket, or unknown cluster without
-    # allow_new); if that happens after the item was already detached from
-    # its source section, it would be orphaned -- present in no section at
-    # all. Doing this lookup first means a failure here leaves `doc`
-    # untouched except, possibly, for a newly created empty cluster (when
-    # allow_new is true) -- a far milder side effect than losing an item,
-    # so don't "fix" this back to removing the item first.
-    destination = find_section(doc, bucket, cluster, allow_new)
     for section in doc.sections:
         if item in section.items:
             idx = section.items.index(item)
@@ -376,11 +364,76 @@ def apply_place(
                     section.body.extend(item.tail)
                 item.tail = []
             section.items.remove(item)
-            break
+            return
+
+
+def apply_place(
+    doc: Document, item: Item, bucket: str, cluster: str | None, allow_new: bool
+) -> None:
+    """Move `item` out of its current section into the bucket/cluster named.
+    The item keeps its `origin` (identity) and `dirty` stays False, so its
+    original lines are emitted verbatim in the new location -- moving must
+    not rewrite text. The destination gets the item with an empty tail of
+    its own; see `_detach` for what happens to the tail it leaves behind.
+    """
+    # Resolve the destination before touching the source. find_section can
+    # raise PlanError (unknown bucket, or unknown cluster without
+    # allow_new); if that happens after the item was already detached from
+    # its source section, it would be orphaned -- present in no section at
+    # all. Doing this lookup first means a failure here leaves `doc`
+    # untouched except, possibly, for a newly created empty cluster (when
+    # allow_new is true) -- a far milder side effect than losing an item,
+    # so don't "fix" this back to removing the item first.
+    destination = find_section(doc, bucket, cluster, allow_new)
+    _detach(doc, item)
     destination.items.append(item)
 
 
+ARCHIVE_SECTIONS = {
+    "done": "done",
+    "missed": "missed",
+    "closed": "closed by research",
+    "routed": "routed elsewhere",
+    "merged": "collapsed duplicates",
+}
+APPROVAL_REASONS = frozenset({"done", "closed", "missed"})
+
+
+def archive_entry(item: Item, note: str) -> list[str]:
+    """Render `item` as archive lines: its text, then its original notes
+    (excluding needs-research flag lines -- a stale research question is
+    noise in an archive), then any added_notes it picked up earlier in the
+    same plan, then the op's `note` if present. This never touches
+    `item.tail`; tail is section context handled by `_detach`, not archive
+    content.
+    """
+    lines = [f"- {item.text}"]
+    lines.extend(f"\t- {n}" for n in item.notes if not FLAG_RE.match(n))
+    lines.extend(f"\t- {n}" for n in item.added_notes)
+    if note:
+        lines.append(f"\t- {note}")
+    return lines
+
+
+def append_archive(path: Path, groups: dict[str, list[list[str]]], today: str) -> None:
+    """Append a dated `# triage <today>` section to the archive file, with
+    one `## <heading>` subsection per reason. Reads existing content and
+    writes once via `atomic_write` -- the archive holds years of history,
+    so this must never clobber it.
+    """
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    parts = [existing.rstrip("\n"), "", f"# triage {today}", ""]
+    for reason, entries in groups.items():
+        parts.append(f"## {ARCHIVE_SECTIONS[reason]}")
+        parts.append("")
+        for entry in entries:
+            parts.extend(entry)
+        parts.append("")
+    atomic_write(path, "\n".join(parts).lstrip("\n") + "\n")
+
+
 IN_PLACE_OPS = {"annotate", "retitle", "flag"}
+MOVE_OPS = {"place", "archive", "merge"}
 
 
 def cmd_apply(args) -> int:
@@ -404,14 +457,21 @@ def cmd_apply(args) -> int:
             return 2
 
         ops = plan.get("ops", [])
-        unknown = sorted(
-            {
-                ref
-                for op in ops
-                for ref in ([op.get("item")] if op.get("item") else [])
-                if ref not in items
-            }
-        )
+
+        def refs(op: dict) -> list[str]:
+            # merge names its ids via "into"/"from" rather than "item"; this
+            # has to cover all three or a merge naming a nonexistent id
+            # slips past this check and KeyErrors in the op loop instead of
+            # returning exit 2.
+            out = []
+            if op.get("item"):
+                out.append(op["item"])
+            if op.get("into"):
+                out.append(op["into"])
+            out.extend(op.get("from", []))
+            return out
+
+        unknown = sorted({r for op in ops for r in refs(op) if r not in items})
         if unknown:
             print(f"unknown item ids: {', '.join(unknown)}", file=sys.stderr)
             return 2
@@ -419,23 +479,56 @@ def cmd_apply(args) -> int:
         today = args.today or date.today().isoformat()
         before_origins = live_origins(doc)
         removed_origins: set[int] = set()
+        archived: dict[str, list[list[str]]] = {}
+
+        def drop(item: Item) -> None:
+            _detach(doc, item)
 
         for op in ops:
             kind = op["op"]
-            if kind not in IN_PLACE_OPS and kind != "place":
+            if kind not in IN_PLACE_OPS and kind not in MOVE_OPS:
                 print(f"unsupported op: {kind}", file=sys.stderr)
                 return 2
-            item = items[op["item"]]
             if kind == "place":
+                item = items[op["item"]]
                 apply_place(
                     doc, item, op["bucket"], op.get("cluster"), args.allow_new_clusters
                 )
             elif kind == "annotate":
+                item = items[op["item"]]
                 apply_annotate(item, op["notes"])
             elif kind == "retitle":
+                item = items[op["item"]]
                 apply_retitle(item, op["text"])
             elif kind == "flag":
+                item = items[op["item"]]
                 apply_flag(item, op.get("question", ""), op.get("remove", False), today)
+            elif kind == "archive":
+                item = items[op["item"]]
+                reason = op["reason"]
+                if reason not in ARCHIVE_SECTIONS:
+                    raise PlanError(f"unknown archive reason: {reason}")
+                archived.setdefault(reason, []).append(
+                    archive_entry(item, op.get("note", ""))
+                )
+                removed_origins.add(item.origin)
+                drop(item)
+            elif kind == "merge":
+                # The winner stays in place, untouched apart from the
+                # optional note. Each loser is archived under "merged" and
+                # removed_origins records its origin -- never its id, which
+                # is a content hash that would change under retitle.
+                winner = items[op["into"]]
+                note = op.get("note", "")
+                for ref in op["from"]:
+                    loser = items[ref]
+                    archived.setdefault("merged", []).append(
+                        archive_entry(loser, f"merged into: {winner.text}")
+                    )
+                    removed_origins.add(loser.origin)
+                    drop(loser)
+                if note:
+                    apply_annotate(winner, [note])
     except json.JSONDecodeError as e:
         print(f"invalid plan JSON: {e}", file=sys.stderr)
         return 2
@@ -483,6 +576,14 @@ def cmd_apply(args) -> int:
         print("--- dry run, no write ---")
         print(out)
         return 0
+
+    # Archive FIRST, then the source. If the second write fails, the item
+    # exists in BOTH files -- visible and trivially fixable. The reverse
+    # order would leave it in NEITHER, which is the exact failure this
+    # design exists to prevent. Never reorder these two calls.
+    if archived:
+        append_archive(archive_path(), archived, today)
+        print(f"appended {len(removed_origins)} to {archive_path()}")
     atomic_write(src, out)
     print(f"wrote {src}")
     return 0
