@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import os
@@ -204,6 +205,99 @@ def is_flagged(item: Item) -> bool:
 
 def open_items(doc: Document) -> list[Item]:
     return [i for s in doc.sections for i in s.items if i.checked is not True]
+
+
+STOPWORDS = frozenset(
+    {"a", "an", "the", "for", "with", "to", "and", "or", "on", "of", "my", "again"}
+)
+
+
+def content_words(text: str) -> set[str]:
+    """The meaningful words in an item's text, for similarity comparison.
+
+    Strips wikilink brackets (`[[`/`]]`), other bracket/paren/punctuation
+    noise (`[]()?#*`` `|`), and URLs, then normalizes and filters out
+    stopwords and empty tokens. Two items that share only stopwords and
+    punctuation (or differ solely on the words that carry meaning) must not
+    look similar on this basis -- that's what separates unrelated items that
+    happen to share a template phrase from genuine duplicates. Reused by the
+    done-check command (Task 8) for the same reason.
+    """
+    bare = re.sub(r"\[\[|\]\]|[\[\]()?#*`|]", " ", normalize(text))
+    bare = re.sub(r"https?://\S+", " ", bare)
+    return {w for w in bare.split() if w and w not in STOPWORDS}
+
+
+def similarity(a: str, b: str) -> float:
+    """Blend raw sequence similarity with content-word overlap.
+
+    `difflib.SequenceMatcher` alone can't tell "Led strip for under bar"
+    from "Led strip for above sink" apart from genuine duplicates -- they're
+    about 90% similar as strings despite differing on the words that carry
+    the meaning. Averaging in the Jaccard overlap of `content_words` pulls
+    that case down (they share only "led" and "strip") while leaving
+    genuine paraphrases -- which share their meaningful words even when
+    reworded -- high.
+    """
+    ratio = difflib.SequenceMatcher(None, normalize(a), normalize(b)).ratio()
+    wa, wb = content_words(a), content_words(b)
+    if not wa or not wb:
+        return ratio
+    jaccard = len(wa & wb) / len(wa | wb)
+    return (ratio + jaccard) / 2
+
+
+def find_dupes(doc: Document, threshold: float) -> list[list[Item]]:
+    """Greedy single-pass grouping of open items by `similarity`.
+
+    For each unclaimed item, collect every later unclaimed item at or above
+    `threshold` into its group, then mark them claimed so they can't also
+    join a later group. This is deliberately not transitive closure or
+    clustering: a human reviews every proposed group, so an item joins at
+    most one, and grouping stops being simple the moment it tries to be
+    clever about chains of similarity.
+    """
+    items = open_items(doc)
+    groups: list[list[Item]] = []
+    claimed: set[int] = set()
+    for i, left in enumerate(items):
+        if i in claimed:
+            continue
+        group = [left]
+        for j, right in enumerate(items[i + 1 :], start=i + 1):
+            if j in claimed:
+                continue
+            if similarity(left.text, right.text) >= threshold:
+                group.append(right)
+                claimed.add(j)
+        if len(group) > 1:
+            claimed.add(i)
+            groups.append(group)
+    return groups
+
+
+def cmd_dupes(args) -> int:
+    doc, _ = load(source_path())
+    groups = find_dupes(doc, args.threshold)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "threshold": args.threshold,
+                    "groups": [
+                        {"items": [{"id": i.id, "text": i.text} for i in g]}
+                        for g in groups
+                    ],
+                },
+                indent=2,
+            )
+        )
+    else:
+        for group in groups:
+            print("candidate group:")
+            for item in group:
+                print(f"  {item.id}  {item.text}")
+    return 0
 
 
 def cmd_status(args) -> int:
@@ -631,6 +725,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("--today", default="", help="override date (testing)")
     p_apply.add_argument("--allow-new-clusters", action="store_true")
     p_apply.set_defaults(func=cmd_apply)
+
+    p_dupes = sub.add_parser("dupes", help="duplicate candidate groups")
+    p_dupes.add_argument("--threshold", type=float, default=0.75)
+    p_dupes.add_argument("--json", action="store_true")
+    p_dupes.set_defaults(func=cmd_dupes)
 
     return parser
 

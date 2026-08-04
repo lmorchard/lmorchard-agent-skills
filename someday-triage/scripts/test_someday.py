@@ -887,3 +887,69 @@ an aside about scope that belongs to neither idea
     assert aside not in destination_body
     assert "a fresh idea with an aside" in destination_body
     assert out.index("existing thing") < out.index("a fresh idea with an aside")
+
+
+DUPES = """# tier 1 — quick
+
+## lights
+
+- [ ] Led strip for under bar
+- [ ] Led strip for above sink
+
+## infra
+
+- [ ] Get logotron working again with docker-in-docker?
+- [ ] get [[logotron]] working again and persistently - docker in docker?
+- [ ] get [[pages/logotron|logotron]] dockerized
+- [ ] Build a tool to export spotify playlist as markdown?
+- [ ] tool to export my playlists from Spotify API (to plex?)?
+"""
+
+
+def test_dupes_does_not_group_under_bar_with_above_sink(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, DUPES)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    groups = someday.find_dupes(doc, 0.75)
+    for group in groups:
+        texts = {i.text for i in group}
+        assert not (
+            "Led strip for under bar" in texts and "Led strip for above sink" in texts
+        )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Measured against this exact fixture, similarity('Get logotron working "
+        "again with docker-in-docker?', 'get [[pages/logotron|logotron]] "
+        "dockerized') ~= 0.43, which is *below* "
+        "similarity('Led strip for under bar', 'Led strip for above sink') "
+        "~= 0.49 -- the very pair this task's negative test exists to keep "
+        "apart. No single threshold groups all three logotron items without "
+        "putting the threshold below the LED pair's score, which the brief's "
+        "own priority ('an over-eager duplicate detector ... is the failure "
+        "this test exists to prevent') rules out. See task-6-report.md for "
+        "the full pairwise numbers and options considered. Flagged rather than "
+        "hand-tuned to pass, since the fixes tried (hyphen-splitting, light "
+        "suffix stemming) only closed the gap to a ~0.03 margin -- too thin "
+        "to trust as a real threshold."
+    ),
+)
+def test_dupes_groups_the_three_logotron_items(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, DUPES)
+    doc, _ = someday.load(tmp_path / "pages" / "someday.md")
+    groups = someday.find_dupes(doc, 0.75)
+    logotron = [g for g in groups if any("logotron" in i.text for i in g)]
+    assert len(logotron) == 1
+    assert len(logotron[0]) == 3
+
+
+def test_dupes_json_output(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, DUPES)
+    rc = someday.main(["dupes", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert all("items" in g for g in data["groups"])
