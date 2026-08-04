@@ -3,8 +3,14 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
+import os
 import re
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 HEADING_RE = re.compile(r"^(#{1,6}) +(.*)$")
 ITEM_RE = re.compile(r"^- (?:\[([ xX])\] )?(.*)$")
@@ -138,3 +144,104 @@ def serialize(doc: Document) -> str:
     if doc.trailing_newline:
         text += "\n"
     return text
+
+
+def normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def assign_ids(doc: Document) -> None:
+    seen: dict[str, int] = {}
+    for section in doc.sections:
+        for item in section.items:
+            base = hashlib.sha1(normalize(item.text).encode()).hexdigest()[:8]
+            seen[base] = seen.get(base, 0) + 1
+            item.id = base if seen[base] == 1 else f"{base}-{seen[base]}"
+
+
+def digest(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
+def vault_root() -> Path:
+    return Path(
+        os.environ.get(
+            "SOMEDAY_VAULT", str(Path.home() / "Documents" / "Obsidian" / "main")
+        )
+    )
+
+
+def source_path() -> Path:
+    return vault_root() / "pages" / "someday.md"
+
+
+def archive_path() -> Path:
+    return vault_root() / "pages" / "someday-done.md"
+
+
+def load(path: Path) -> tuple[Document, str]:
+    text = path.read_text()
+    doc = parse(text)
+    assign_ids(doc)
+    return doc, text
+
+
+FLAG_RE = re.compile(r"^needs-research \((\d{4}-\d{2}-\d{2})\): (.*)$")
+INTAKE_TITLE = "intake"
+
+
+def is_flagged(item: Item) -> bool:
+    return any(FLAG_RE.match(note) for note in item.notes)
+
+
+def open_items(doc: Document) -> list[Item]:
+    return [i for s in doc.sections for i in s.items if i.checked is not True]
+
+
+def cmd_status(args) -> int:
+    doc, text = load(source_path())
+    buckets: dict[str, int] = {}
+    for section in doc.sections:
+        if section.level == 1:
+            buckets[section.title] = 0
+    current = None
+    for section in doc.sections:
+        if section.level == 1:
+            current = section.title
+        if current is not None:
+            buckets[current] += sum(1 for i in section.items if i.checked is not True)
+    data = {
+        "intake": buckets.get(INTAKE_TITLE, 0),
+        "needs_research": sum(1 for i in open_items(doc) if is_flagged(i)),
+        "open_total": len(open_items(doc)),
+        "buckets": {k: v for k, v in buckets.items() if k != INTAKE_TITLE},
+        "digest": digest(text),
+    }
+    if args.json:
+        print(json.dumps(data, indent=2))
+    else:
+        print(f"intake: {data['intake']}   needs-research: {data['needs_research']}")
+        print(f"open total: {data['open_total']}")
+        for name, count in data["buckets"].items():
+            print(f"  {count:>4}  {name}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="someday", description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_status = sub.add_parser("status", help="counts for intake, queue, and buckets")
+    p_status.add_argument("--json", action="store_true")
+    p_status.set_defaults(func=cmd_status)
+
+    return parser
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
