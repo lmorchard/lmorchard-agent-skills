@@ -699,6 +699,82 @@ def test_archive_preserves_continuation_lines_and_nested_bullets(tmp_path, monke
     assert "needs-research" not in archive
 
 
+COMPLETED_WITH_CONTENT = """# tier 1 — quick
+
+- [x] finished multi-part thing
+	- a note
+	  continued on the next line
+		- a deeper sub-bullet
+	- needs-research (2026-08-01): stale question?
+- [ ] still open thing
+"""
+
+
+def test_sweep_archives_completed_item_with_all_its_indented_content(
+    tmp_path, monkeypatch, capsys
+):
+    # A ticked box is the ordinary case a completed-item sweep exists to
+    # handle: the item, its note, a continuation line and a nested bullet
+    # must all travel to the archive, and the flag line must not (see
+    # test_archive_preserves_continuation_lines_and_nested_bullets for why
+    # that exclusion exists). The id comes from `status --json`'s
+    # `completed_items`, exactly the way intake work reads ids from
+    # `intake_items`.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, COMPLETED_WITH_CONTENT)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    someday.main(["status", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert data["completed"] == 1
+    target = data["completed_items"][0]["id"]
+    plan = _plan(tmp_path, [{"op": "archive", "item": target, "reason": "done"}])
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    out = src.read_text()
+    assert "finished multi-part thing" not in out
+    assert "still open thing" in out
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert "- [x] finished multi-part thing" in archive
+    assert "\t- a note" in archive
+    assert "\t  continued on the next line" in archive
+    assert "\t\t- a deeper sub-bullet" in archive
+    assert "needs-research" not in archive
+
+
+def test_archive_of_item_still_open_carries_unchecked_box(tmp_path, monkeypatch):
+    # Retiring an item while it is still open (closed/missed/routed/merged)
+    # must record that it was open when retired -- `- [ ] `, not the old
+    # bare `- ` that dropped the state entirely.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, MERGEABLE)
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id  # "dead on arrival thing", checked False
+    plan = _plan(
+        tmp_path, [{"op": "archive", "item": target, "reason": "closed", "note": "x"}]
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert "- [ ] dead on arrival thing" in archive
+
+
+def test_archive_of_non_checkbox_fragment_carries_bare_dash(tmp_path, monkeypatch):
+    # A fragment (no checkbox at all) has no state to record; archiving it
+    # must not invent one.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(tmp_path, "# unclear\n\n- batteries?\n")
+    _seed(tmp_path, "Completed items from [[someday]]\n", "someday-done.md")
+    doc, _ = someday.load(src)
+    target = doc.sections[0].items[0].id
+    plan = _plan(
+        tmp_path, [{"op": "archive", "item": target, "reason": "closed", "note": "x"}]
+    )
+    assert someday.main(["apply", str(plan), "--today", "2026-08-04"]) == 0
+    archive = (tmp_path / "pages" / "someday-done.md").read_text()
+    assert "- batteries?" in archive
+    assert "- [ ] batteries?" not in archive
+    assert "- [x] batteries?" not in archive
+
+
 def test_archive_leaves_interstitial_tail_behind_in_source_section(
     tmp_path, monkeypatch
 ):
@@ -1488,6 +1564,58 @@ def test_status_intake_ids_are_the_ids_apply_accepts(tmp_path, monkeypatch, caps
     assert someday.main(["apply", str(plan)]) == 0
     out = src.read_text()
     assert out.index("existing thing") < out.index("A  Plain Intake Item")
+
+
+def test_status_json_lists_completed_items_with_ids(tmp_path, monkeypatch, capsys):
+    # Mirrors test_status_json_lists_open_intake_items_with_ids: a checked
+    # item needs a published id too, or a sweep step has nothing to file an
+    # `archive` op against. Collected across the whole file, not just
+    # intake, and in document order.
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    src = _seed(
+        tmp_path,
+        "# intake\n\n- [ ] still open\n\n"
+        "# tier 1 — quick\n\n"
+        "- [x] finished thing one\n- [ ] not finished\n- [x] finished thing two\n",
+    )
+    rc = someday.main(["status", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    doc, _ = someday.load(src)
+    expected = [
+        {"id": i.id, "text": i.text}
+        for s in doc.sections
+        for i in s.items
+        if i.checked is True
+    ]
+    assert data["completed_items"] == expected
+    assert [i["text"] for i in data["completed_items"]] == [
+        "finished thing one",
+        "finished thing two",
+    ]
+    assert data["completed"] == len(data["completed_items"])
+
+
+def test_status_completed_items_empty_when_nothing_checked(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, BASIC)
+    rc = someday.main(["status", "--json"])
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data["completed_items"] == []
+    assert data["completed"] == 0
+    assert data["open_total"] == 2
+
+
+def test_status_human_readable_reports_completed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SOMEDAY_VAULT", str(tmp_path))
+    _seed(tmp_path, "# tier 1 — quick\n\n- [x] finished thing\n- [ ] open thing\n")
+    rc = someday.main(["status"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "completed: 1" in out
 
 
 def test_apply_rejects_op_sequenced_after_its_item_was_archived(

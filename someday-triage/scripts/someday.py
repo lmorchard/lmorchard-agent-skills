@@ -49,14 +49,24 @@ class Document:
     trailing_newline: bool = False
 
 
+def render_box(checked: bool | None) -> str:
+    """The checkbox prefix for an item's rendered line: `[x] ` when checked,
+    `[ ] ` when open, or nothing for a non-checkbox fragment (`checked is
+    None`). Shared by `render_item` and `archive_entry` so the two can't
+    drift on how a box is drawn.
+    """
+    if checked is None:
+        return ""
+    return "[x] " if checked else "[ ] "
+
+
 def render_item(item: Item) -> list[str]:
     """Regenerate only the item's own line; everything else is passed
     through verbatim. `item.raw` may hold content `parse` never modelled
     as a note or tail line (continuations, deeper-nested bullets), and
     reconstructing from the parsed fields alone would silently drop it.
     """
-    box = "" if item.checked is None else ("[x] " if item.checked else "[ ] ")
-    lines = [f"- {box}{item.text}"]
+    lines = [f"- {render_box(item.checked)}{item.text}"]
     lines.extend(item.raw[1:])
     lines.extend(f"\t- {note}" for note in item.added_notes)
     lines.extend(item.tail)
@@ -561,8 +571,16 @@ def cmd_status(args) -> int:
     # them) could not be completed at all. Collected in the same walk as the
     # bucket counts so the list and the `intake` count cannot disagree, and in
     # document order because that is the order a human reads them in.
+    #
+    # `completed_items` mirrors that exact shape and guarantee for the other
+    # half of the file `open_items`/`lint`/`status` never look at: items
+    # already ticked `- [x]`, across every section (not just intake), also in
+    # document order. This is what the sweep step in intake mode iterates to
+    # emit `archive reason=done` ops -- without a published id here, a ticked
+    # item is as unreachable as an unpublished intake item was.
     current = None
     intake_items: list[dict] = []
+    completed_items: list[dict] = []
     for section in doc.sections:
         if section.level == 1:
             current = section.title
@@ -574,9 +592,14 @@ def cmd_status(args) -> int:
                 for i in section.items
                 if i.checked is not True
             )
+        completed_items.extend(
+            {"id": i.id, "text": i.text} for i in section.items if i.checked is True
+        )
     data = {
         "intake": buckets.get(INTAKE_TITLE, 0),
         "intake_items": intake_items,
+        "completed": len(completed_items),
+        "completed_items": completed_items,
         "needs_research": sum(1 for i in open_items(doc) if is_flagged(i)),
         "open_total": len(open_items(doc)),
         "buckets": {k: v for k, v in buckets.items() if k != INTAKE_TITLE},
@@ -586,7 +609,7 @@ def cmd_status(args) -> int:
         print(json.dumps(data, indent=2))
     else:
         print(f"intake: {data['intake']}   needs-research: {data['needs_research']}")
-        print(f"open total: {data['open_total']}")
+        print(f"open total: {data['open_total']}   completed: {data['completed']}")
         for name, count in data["buckets"].items():
             print(f"  {count:>4}  {name}")
     return 0
@@ -756,11 +779,17 @@ ARCHIVE_SECTIONS = {
 
 
 def archive_entry(item: Item, note: str) -> list[str]:
-    """Render `item` as archive lines: its text, then every other raw line
-    verbatim -- notes, continuation lines, nested bullets, whatever `parse`
-    left in `raw` -- excluding needs-research flag lines, then any
-    added_notes it picked up earlier in the same plan, then the op's `note`
-    if present.
+    """Render `item` as archive lines: its checkbox state and text, then
+    every other raw line verbatim -- notes, continuation lines, nested
+    bullets, whatever `parse` left in `raw` -- excluding needs-research flag
+    lines, then any added_notes it picked up earlier in the same plan, then
+    the op's `note` if present.
+
+    The box comes from `render_box`, the same helper `render_item` uses, so
+    the two forms of an item's line can't drift. Retiring an item while it
+    is still open (`closed`/`missed`/`routed`/`merged`) now carries `[ ] `
+    rather than dropping the state entirely -- the archive should show what
+    the item's state actually was when it was retired.
 
     `item.raw` is the source of truth here, not `item.notes`: `notes` is a
     lossy projection that only keeps indented `- ` bullets, silently
@@ -769,7 +798,7 @@ def archive_entry(item: Item, note: str) -> list[str]:
     `raw[1:]` through unmodified. This never touches `item.tail`; tail is
     section context handled by `_detach`, not archive content.
     """
-    lines = [f"- {item.text}"]
+    lines = [f"- {render_box(item.checked)}{item.text}"]
     lines.extend(line for line in item.raw[1:] if not _is_flag_line(line))
     lines.extend(f"\t- {n}" for n in item.added_notes)
     if note:
