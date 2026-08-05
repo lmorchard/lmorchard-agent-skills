@@ -61,9 +61,9 @@ link:
 	  if [ -e "$$dest" ] && [ ! -L "$$dest" ]; then \
 	    echo "  skip  $$s (real directory at $$dest - remove it first)"; \
 	  elif [ -L "$$dest" ] && [ "`readlink "$$dest"`" = "$(CURDIR)/$$s" ]; then \
-	    echo "  ok    $$s"; \
+	    echo "  ok    $$s to $$dest"; \
 	  else \
-	    ln -sfn "$(CURDIR)/$$s" "$$dest" && echo "  link  $$s"; \
+	    ln -sfn "$(CURDIR)/$$s" "$$dest" && echo "  link  $$s to $$dest"; \
 	  fi; \
 	done
 
