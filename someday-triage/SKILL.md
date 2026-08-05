@@ -85,18 +85,27 @@ Start every invocation with:
 
     someday.py status --json
 
-If `intake` and `needs_research` are both `0`: report that plus one line of `lint` totals and
-**stop**. Do not read the rest of the list. This is the common morning case and the whole reason
-`status` exists.
+A nonzero `completed` is never "nothing to do" — it is the completed-items sweep's whole reason
+to exist (see intake mode, step 2), and it must run regardless of how empty everything else looks.
+Only when `intake`, `needs_research`, **and** `completed` are all `0` should you report that plus
+one line of `lint` totals and **stop** without reading the rest of the list. This is the common
+morning case and the whole reason `status` exists — but it is not the common case *between*
+capture bursts, when intake is typically empty and a backlog of ticked boxes is exactly what's
+sitting there waiting to be swept.
 
 ## Mode: intake (default, run often)
 
-1. `status --json`. Bail per the cheap path if there is nothing to do. Keep the `digest`.
-2. **Sweep completed items — before touching intake.** For each entry in `completed_items`, emit
-   an `archive` op with `reason: done`. This is **autonomous — no confirmation needed**: a ticked
-   `- [x]` box is Les's own declaration that the thing is finished, not the tool inferring one.
-   Fold these ops into the same plan as the intake work below; at step 7's yes/no, ask only about
-   the ops that need it — sweep archives are not among them.
+1. `status --json`. Bail per the cheap path — checking `intake`, `needs_research`, **and**
+   `completed` — if there is genuinely nothing to do. Keep the `digest`.
+2. **Sweep completed items — before touching intake, and before any decision to stop.** For each
+   entry in `completed_items`, emit an `archive` op with `reason: done`. This runs whenever
+   `completed` is nonzero, independent of `intake` and `needs_research` — a completed item pending
+   sweep is never "nothing to do," which is exactly why the cheap path in step 1 checks `completed`
+   too. Do not let a future reordering of these steps put a bail check ahead of this one. This op
+   is **autonomous — no confirmation needed**: a ticked `- [x]` box is Les's own declaration that
+   the thing is finished, not the tool inferring one. Fold these ops into the same plan as the
+   intake work below; at step 7's yes/no, ask only about the ops that need it — sweep archives are
+   not among them.
 3. Read the `# intake` items and the heading skeleton only — not all existing items. The ids you
    will file ops against come from that same `status --json`, under `intake_items`.
 4. Gather signals: `lint --json`, `dupes --json`, and `done-check --json` (archive-only, no

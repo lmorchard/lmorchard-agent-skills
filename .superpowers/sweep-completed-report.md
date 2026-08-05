@@ -91,3 +91,41 @@ bug on my end. Worth a second look if 41 was load-bearing for something.
 
 `make check` from repo root: ruff check clean, ruff format clean, 222 tests passed
 (216 baseline + 6 new). someday-triage alone: 115 tests (109 + 6).
+
+## Follow-up: cheap-path bail made the sweep unreachable
+
+Coordinator review caught a real gap: "The cheap path" section's early-exit gate
+(`intake == 0 and needs_research == 0` → report and stop, don't read further) was
+untouched by this diff, and intake mode's step 1 bails per that same gate *before*
+reaching the new step 2 sweep. The real vault's actual state — `intake: 0,
+needs_research: 0, completed: 43` — hits that gate exactly, so a model following the
+documented flow today stops without ever sweeping, in what is apparently the normal
+between-capture-bursts state of the file.
+
+Checked for every place the early-exit condition is restated (grep across SKILL.md and
+README.md for "nothing to do", "bail", "stop", the field names): the "cheap path" section
+is the sole canonical statement; intake step 1 only *refers* to it ("bail per the cheap
+path"), it doesn't re-list the fields. So one edit closes the gap, not two independent
+ones that could drift apart again.
+
+Fix, docs-only, no code change (confirmed none needed — this was purely a
+documentation-ordering defect, exactly as flagged):
+
+- `someday-triage/SKILL.md`, "The cheap path": the gate now reads `intake`,
+  `needs_research`, **and** `completed` all `0` before stopping, with a sentence stating
+  plainly that a nonzero `completed` is never "nothing to do" and must run regardless of
+  how empty everything else looks.
+- `someday-triage/SKILL.md`, intake mode step 1: now names all three fields it defers to
+  the cheap path for, instead of a bare "if there is nothing to do."
+- `someday-triage/SKILL.md`, intake mode step 2 (the sweep): added an explicit sentence
+  that it runs "before touching intake, and before any decision to stop," runs whenever
+  `completed` is nonzero independent of the other two fields, and a note against a future
+  edit reordering the steps and reintroducing a bail-before-sweep path.
+
+Also checked the coordinator's discoverability question: `status`'s human-readable output
+already prints `completed: N` (added in this feature), and nothing in SKILL.md told the
+model to disregard that field when intake is empty — the cheap-path fix above is what
+makes it load-bearing instead of decorative. No separate change needed there.
+
+`make check` re-run after this fix: still 222 passed, ruff clean — expected, since this
+was a pure documentation edit.
