@@ -85,8 +85,45 @@ def is_session_transcript(path: Path) -> bool:
     """A top-level session transcript, not a subagent's."""
     if "subagents" in path.parts:
         return False
-    return bool(UUID_RE.match(path.stem))
+    stem = path.stem
+    if UUID_RE.match(stem):
+        return True
+    if stem.startswith("rollout-"):
+        return True
+    return False
 
+
+
+def normalize_codex_record(parsed: dict) -> dict:
+    if "type" in parsed and "payload" in parsed:
+        timestamp = parsed.get("timestamp")
+        payload = parsed.get("payload", {})
+        
+        if parsed["type"] == "session_meta":
+            return {
+                "type": "ai-title",
+                "sessionId": payload.get("session_id"),
+                "cwd": payload.get("cwd"),
+                "gitBranch": payload.get("git", {}).get("branch"),
+                "timestamp": timestamp,
+                "isSidechain": False
+            }
+            
+        if parsed["type"] == "response_item":
+            role = payload.get("role")
+            if role in ("user", "assistant"):
+                text_content = []
+                for c in payload.get("content", []):
+                    if c.get("type") == "input_text" or c.get("type") == "output_text":
+                        text_content.append({"type": "text", "text": c.get("text", "")})
+                
+                return {
+                    "type": role,
+                    "timestamp": timestamp,
+                    "isSidechain": False,
+                    "message": {"content": text_content}
+                }
+    return parsed
 
 def read_transcript(path: Path) -> Transcript:
     """Parse a JSONL transcript, tolerating partial trailing writes."""
@@ -103,7 +140,7 @@ def read_transcript(path: Path) -> Transcript:
                 malformed += 1
                 continue
             if isinstance(parsed, dict):
-                records.append(parsed)
+                records.append(normalize_codex_record(parsed))
             else:
                 malformed += 1
     return Transcript(path=path, records=records, malformed=malformed)
@@ -138,9 +175,96 @@ def touches_window(records: list[dict], window: Window) -> bool:
     return any(_in_window(rec, window) for rec in records)
 
 
-def discover_transcripts(root: Path) -> list[Path]:
-    """Every top-level session transcript under ~/.claude/projects."""
-    return sorted(p for p in root.glob("*/*.jsonl") if is_session_transcript(p))
+
+import sqlite3
+import json
+from datetime import datetime, timezone
+
+def discover_opencode_transcripts(window: Window) -> list[Transcript]:
+    db_path = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+    if not db_path.exists():
+        return []
+        
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+    except Exception:
+        return []
+        
+    # We filter by time_created. OpenCode uses ms timestamps.
+    start_ms = int(window.since.timestamp() * 1000)
+    end_ms = int(window.until.timestamp() * 1000)
+    
+    # We fetch all sessions that touch the window. 
+    # Let's just fetch all sessions updated in the window.
+    query = "SELECT * FROM session WHERE time_updated >= ? AND time_created < ?"
+    sessions = conn.execute(query, (start_ms, end_ms)).fetchall()
+    
+    transcripts = []
+    for ses in sessions:
+        project = conn.execute("SELECT worktree FROM project WHERE id = ?", (ses['project_id'],)).fetchone()
+        cwd = project['worktree'] if project else ""
+        
+        messages = conn.execute("SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created", (ses['id'],)).fetchall()
+        
+        records = []
+        
+        # Meta record for session info
+        records.append({
+            "type": "ai-title",
+            "sessionId": ses['id'],
+            "cwd": cwd,
+            "aiTitle": ses['title'] or ses['slug'],
+            "timestamp": datetime.fromtimestamp(ses['time_created'] / 1000.0, tz=timezone.utc).isoformat(),
+            "isSidechain": False
+        })
+        
+        for msg in messages:
+            mdata = json.loads(msg['data'])
+            role = mdata.get('role')
+            if role not in ('user', 'assistant'):
+                continue
+                
+            parts = conn.execute("SELECT data FROM part WHERE message_id = ? ORDER BY time_created", (msg['id'],)).fetchall()
+            
+            content_blocks = []
+            for part in parts:
+                pdata = json.loads(part['data'])
+                if pdata.get('type') == 'text' and pdata.get('text'):
+                    content_blocks.append({"type": "text", "text": pdata.get('text')})
+                elif pdata.get('type') == 'tool-call':
+                    # To allow _bash_commands to harvest dirs
+                    content_blocks.append({
+                        "type": "tool_use",
+                        "name": "Bash" if pdata.get('name') == 'default_api:bash' else pdata.get('name'),
+                        "input": pdata.get('input', {})
+                    })
+                    
+            if content_blocks:
+                created_ms = mdata.get('time', {}).get('created', ses['time_created'])
+                records.append({
+                    "type": role,
+                    "timestamp": datetime.fromtimestamp(created_ms / 1000.0, tz=timezone.utc).isoformat(),
+                    "isSidechain": False,
+                    "message": {"content": content_blocks}
+                })
+                
+        if records:
+            # We use a fake path so the rest of the script can handle it.
+            # project_label uses path.parent.name, so we make it look like ~/.claude/projects/ProjectName/SessionId.jsonl
+            proj_name = Path(cwd).name if cwd else "OpenCode"
+            fake_path = Path.home() / ".claude" / "projects" / proj_name / f"{ses['id']}.jsonl"
+            transcripts.append(Transcript(path=fake_path, records=records, malformed=0))
+            
+    return transcripts
+
+def discover_transcripts(roots: list[Path]) -> list[Path]:
+    """Every top-level session transcript under ~/.claude/projects and ~/.codex/sessions."""
+    paths = []
+    for root in roots:
+        paths.extend(root.glob("*/*.jsonl"))
+        paths.extend(root.glob("*/*/*/*.jsonl")) # Codex structure: sessions/YYYY/MM/DD/
+    return sorted(p for p in paths if is_session_transcript(p))
 
 
 PROMPT_CHAR_LIMIT = 1500
@@ -807,20 +931,24 @@ SCHEMA_VERSION = 3
 DEFAULT_ROOT = Path.home() / ".claude" / "projects"
 
 
-def build_digest(root: Path, window: Window, verifier) -> dict:
+def build_digest(roots: list[Path], window: Window, verifier) -> dict:
     sessions: list[dict] = []
     malformed = 0
     dropped = 0
     warnings: list[str] = []
     harvested: dict[str, None] = {}
 
-    for path in discover_transcripts(root):
+    transcripts = []
+    for path in discover_transcripts(roots):
         try:
-            transcript = read_transcript(path)
+            transcripts.append(read_transcript(path))
         except OSError as err:
             warnings.append(f"unreadable transcript {path}: {err}")
             continue
-
+            
+    transcripts.extend(discover_opencode_transcripts(window))
+    
+    for transcript in transcripts:
         malformed += transcript.malformed
         if not touches_window(transcript.records, window):
             continue
@@ -913,7 +1041,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--since", help="window start, YYYY-MM-DD")
     parser.add_argument("--until", help="window end (exclusive), YYYY-MM-DD")
     parser.add_argument("--no-verify", action="store_true", help="skip git and gh")
-    parser.add_argument("--root", default=str(DEFAULT_ROOT), help="projects directory")
+    parser.add_argument("--root", default=None, help="projects directory")
     parser.add_argument("--out", help="write JSON here instead of stdout")
     args = parser.parse_args(argv)
 
@@ -926,7 +1054,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     verifier = NullVerifier() if args.no_verify else GhVerifier()
-    digest = build_digest(Path(args.root), window, verifier)
+    
+    if args.root:
+        roots = [Path(args.root)]
+    else:
+        roots = [
+            Path.home() / ".claude" / "projects",
+            Path.home() / ".codex" / "sessions",
+        ]
+    digest = build_digest(roots, window, verifier)
     payload = json.dumps(digest, indent=2, ensure_ascii=False)
 
     if args.out:
