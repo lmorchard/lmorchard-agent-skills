@@ -72,8 +72,10 @@ This separates "thinking" (you, focused) from "doing" (agent, autonomous).
 | `references/makefile-conventions.md` | Expected Makefile targets and fallbacks |
 | `references/github-projects.md` | Optional Projects v2 board integration (CLAUDE.md schema, transition commands) |
 
-## When NOT to use
+## When NOT to use (The Ceremony Threshold)
 
-- One-line tweaks, doc fixes, single-grep sed-replacements — overhead exceeds value.
+Do not blindly generate disk artifacts for every task. Respect the **Ceremony Threshold**:
+- **Small/Tactical (< 3 steps, PR reviews, bug fixes, single-file refactors):** DO NOT use this skill or generate physical artifacts. Use the internal `todowrite` tool to track steps silently and keep state entirely in-context. Just do the work.
+- **Large/Architectural (new features, multi-session work, high ambiguity):** Use this skill to structure the workflow and create inspectable artifacts.
 - Exploratory or research-only work without an implementation goal.
 - Work where the user has explicitly opted out of the structured flow.
