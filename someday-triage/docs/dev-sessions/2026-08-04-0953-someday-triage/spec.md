@@ -209,3 +209,25 @@ None blocking. Two decisions deferred by choice:
 
 - **Trigger automation.** Manual for v1. If the morning ritual does not stick, add either a cron run or a `session-wrapup` nudge; the design does not preclude either.
 - **Research budget default.** Starting at 3 items per run. Tune once there is real usage data on how many ideas arrive per day.
+
+## Deferred findings at merge (2026-08-04)
+
+Each was found during implementation review, judged non-blocking, and adjudicated with a reason. Recorded here because the build ledger was transient and these are the known soft spots of code that runs against a personal knowledge base daily. User-facing limitations live in `SKILL.md`; these are code-level.
+
+| # | Finding | Why deferred |
+|---|---|---|
+| 1 | Uppercase `- [X] foo` regenerates as `- [x] foo` when an item goes dirty | `[X]` means `checked is True`, so the item is excluded from `open_items` and can never be an op target. Zero occurrences in the real file. The only divergence a whole-file conservation fuzz found. |
+| 2 | `_is_done_check_excluded` matches ancestor path components, so a `--repos` root nested under a directory named `build` or `dist` silently skips everything beneath it | `~/devel` has no such ancestor, so the documented audit path is unaffected. One-line fix available using `path.relative_to(root_path)`. |
+| 3 | `archive_entry` strips pre-existing flag lines from `raw` but keeps a same-plan flag arriving via `added_notes`, so `[flag, archive]` archives the new flag | Mildly pollutes history, arguably informative. One-line fix if touched. |
+| 4 | An `annotate` note whose text coincidentally matches `FLAG_RE` is deleted by a later `flag` op in the same plan | Requires a note formatted exactly as `needs-research (YYYY-MM-DD): …`. `FLAG_RE` being the sole flag arbiter everywhere is the right invariant. |
+| 5 | The malformed-plan `except` also wraps `digest`, `live_origins`, and the `apply_*` calls, so an internal bug is misreported as exit 2 "malformed plan" | Misdiagnosis only — nothing is written on that path. |
+| 6 | `_is_done_check_excluded` calls `path.resolve()` once per scanned file, and `rglob` does not prune directories, so a large `--repos` scan pays a syscall per file under `node_modules` too | Performance, not correctness; `--repos` is documented as audit-only. |
+| 7 | `atomic_write` has no `fsync` on the temp file or parent directory | Atomic against interleaved readers, which is what the spec claims. Not durable against power loss. |
+| 8 | `section.items.remove` relies on dataclass structural equality rather than object identity | Safe while `origin` is unique and never mutated; `_detach` is the only caller. An implicit invariant, not an enforced one. |
+| 9 | Tests do locale-default IO on em-dash content | Test-only. Every production IO path passes `encoding="utf-8"`. |
+| 10 | The archive-entry count invariant is reachable only by simulation, since the pre-flight rejects every plan that would trip it | Deliberate defense-in-depth: three lines guarding the one corruption invisible in the source file, and it survives a bug in the pre-flight. Its test monkeypatches the pre-flight away, matching the codebase's existing pattern for by-design-unreachable guards. |
+
+### Two questions for Les, unanswered at merge
+
+- **`# triage notes`** is a level-1 bucket in the real `someday.md` and therefore a valid `place` target, but it looks like leftover scaffolding from the manual triage. Keep it, rename it, or fold it into `unclear`?
+- **No `(verified YYYY-MM-DD)` annotation exists in the real file yet.** The research notes added during the 2026-08-04 reorganization have no verification dates, so `lint`'s `stale` category — and therefore audit mode's primary job — reports nothing until they are backfilled. The first audit run should add them.
