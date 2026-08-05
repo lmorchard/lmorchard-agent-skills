@@ -39,7 +39,7 @@ existing flag. Both nominate; the model supplies the judgment.
 
     make check      # ruff lint + format check + pytest, from the repo root
 
-109 tests. The four that justify the whole approach:
+115 tests. The four that justify the whole approach:
 
 - `test_round_trip_is_byte_exact` / `test_round_trip_on_real_file` — fidelity
 - `test_apply_rejects_reconciliation_failure_from_broken_serializer` — a dropped item is caught

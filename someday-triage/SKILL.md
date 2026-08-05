@@ -21,11 +21,23 @@ always reads `pages/someday.md` and `pages/someday-done.md` beneath it.
 - **Never edit `someday.md` or `someday-done.md` directly.** Every change goes through
   `someday.py apply`. The script guarantees no item is silently lost; freehand editing does not.
 - **Always `apply --dry-run` first**, show Les the reconciliation line, then apply.
-- **Retirements need consent.** `archive` with reason `done`, `closed`, or `missed` retires an
-  item on the merits and requires Les's yes/no. `archive` with reason `routed` (not
-  someday-shaped, going to the journal) is autonomous. The script does **not** enforce this — it
-  only records the reason, so the archive diff shows which of the two happened. The rule lives
-  here; keep it.
+- **Retirements need consent — except when the box is already ticked.** The rule is about the
+  item's *state*, which the script can see (`item.checked`), not about the reason string alone:
+  - `archive reason=done` on an item that is **already `- [x]`** → autonomous. Les ticked it
+    himself; that is his own declaration the thing is finished, not the tool guessing.
+  - `archive reason=done` on an item that is **still open**, proposed from a `done-check` hit →
+    requires Les's yes/no. There the tool is inferring, not reading a fact he already recorded.
+  - `closed` and `missed` → always require yes/no, regardless of checkbox state.
+  - `routed` (not someday-shaped, going to the journal) → always autonomous.
+  The script does **not** enforce any of this — it only records the reason, so the archive diff
+  shows which case happened. The rule lives here; keep it.
+- **The archive entry preserves the checkbox.** `archive_entry` renders `- [x] `, `- [ ] `, or a
+  bare `- ` for a non-checkbox fragment, matching the item's state at the moment it was retired —
+  not always `- [x]` and not always bare. The one thing that does **not** travel from the source
+  line: a `needs-research` flag line is stripped. That is deliberate (a stale research question on
+  a retired item is noise) but it is the single carve-out from "everything indented below the item
+  travels with it" — worth knowing before you go looking for a flag note that's supposed to be
+  gone.
 - **Never run git against the vault.** `/Users/lorchard/Documents/Obsidian/main/.git` is an
   empty directory — Syncthing carries files but not git internals. History lives in the private
   `obsidian-main-backup` repo. Anything that walks the vault for git history will correctly find
@@ -80,30 +92,38 @@ If `intake` and `needs_research` are both `0`: report that plus one line of `lin
 ## Mode: intake (default, run often)
 
 1. `status --json`. Bail per the cheap path if there is nothing to do. Keep the `digest`.
-2. Read the `# intake` items and the heading skeleton only — not all existing items. The ids you
+2. **Sweep completed items — before touching intake.** For each entry in `completed_items`, emit
+   an `archive` op with `reason: done`. This is **autonomous — no confirmation needed**: a ticked
+   `- [x]` box is Les's own declaration that the thing is finished, not the tool inferring one.
+   Fold these ops into the same plan as the intake work below; at step 7's yes/no, ask only about
+   the ops that need it — sweep archives are not among them.
+3. Read the `# intake` items and the heading skeleton only — not all existing items. The ids you
    will file ops against come from that same `status --json`, under `intake_items`.
-3. Gather signals: `lint --json`, `dupes --json`, and `done-check --json` (archive-only, no
+4. Gather signals: `lint --json`, `dupes --json`, and `done-check --json` (archive-only, no
    `--repos`; in intake you are only judging a handful of new items, so the noise rate is a
    non-issue).
-4. **Drain order:** existing `needs-research` flags first, oldest flag date first, then new
+5. **Drain order:** existing `needs-research` flags first, oldest flag date first, then new
    intake items. Budget **3 research tasks per run** — a convention you enforce, not a script
    flag — so the queue cannot starve behind a drip of new ideas. Overflow gets a `flag` op
    carrying the specific question, not research.
-5. For each intake item decide, in this order:
+6. For each intake item decide, in this order:
    - **Not someday-shaped?** → `archive` with reason `routed`, then invoke the `journal-note`
      skill to place it. Appointments and anything with a date go to `# followup`; blog ideas to
      `# notes`; near-term todos to `# today` or `# this week`. Autonomous.
    - **Duplicate of an existing item?** → propose `merge`. Remember `dupes` only catches
      near-verbatim repeats; you own paraphrases.
-   - **Already done?** → propose `archive` with reason `done`. Not if it is recurring.
+   - **Already done?** → propose `archive` with reason `done`. Not if it is recurring. (This is
+     the `done-check`-inferred case, still open — different from step 2's sweep of items already
+     ticked; this one needs Les's yes/no.)
    - **Dead on the merits?** → propose `archive` with reason `closed`. Pruning on arrival is the
      point: dead ideas should never join the list.
    - **Otherwise** → `place` into a bucket and cluster, `retitle` if the wording is vague, and
      `annotate` with one concrete first step.
-6. Research an item only when the answer would change its disposition. Every factual note you
+7. Research an item only when the answer would change its disposition. Every factual note you
    write must end in `(verified YYYY-MM-DD)`.
-7. Emit the plan → `apply --dry-run` → show Les the reconciliation line → get yes/no on any
-   retirements and merges → `apply`. Report one line per item.
+8. Emit the plan → `apply --dry-run` → show Les the reconciliation line → get yes/no on any
+   retirements and merges that need it (see step 2 for the ones that don't) → `apply`. Report one
+   line per item.
 
 ## Mode: audit (periodic, or when the list feels stale)
 
@@ -239,6 +259,8 @@ report rather than retry.
 JSON shapes:
 
 - `status` → `intake`, `intake_items` (list of `{id, text}`, open `# intake` items in document
+  order), `completed` (count of items with `checked is True`, whole file), `completed_items`
+  (list of `{id, text}`, same shape and ordering guarantee as `intake_items`, whole file, document
   order), `needs_research`, `open_total`, `buckets` (title → open count), `digest`
 - `lint` → `dated`, `fragments`, `untiered`, `research_candidates`, `stale`, `malformed_dates`;
   each a list of `{id, text, bucket}`
