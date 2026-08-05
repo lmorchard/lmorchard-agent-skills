@@ -78,6 +78,15 @@ Read this before trusting any command's output. Each line below was measured, no
   having no usable verification date, same as if the note weren't there at all — and surfaced
   separately under `malformed_dates` so you know to go fix the date rather than have it silently
   ignored.
+- **No op touches headings or a section's prose.** Every operation acts on an *item*. There is no
+  way to add, rename, remove, or reorder a `#`/`##` heading, and no way to edit the prose body
+  under one. `place` can file an item into an existing bucket or create a *cluster* with
+  `--allow-new-clusters`, and that is the whole of the structural surface. So if Les asks to drop a
+  section, rename a tier, or delete a paragraph of preamble, say plainly that the tool cannot and
+  let him decide — do **not** reach for a hand-edit on your own initiative. If he authorises one
+  anyway (reasonable for a section holding zero items, where the never-lose-an-item guarantee is
+  not in play), verify afterwards that `status`'s `open_total` is unchanged and that
+  `serialize(parse(text)) == text` still holds, and say you checked.
 
 ## The cheap path
 
