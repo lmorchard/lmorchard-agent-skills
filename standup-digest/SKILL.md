@@ -1,13 +1,13 @@
 ---
 name: standup-digest
-description: Use when Les asks what he was up to yesterday, wants a standup report, or needs to reconstruct recent work from his Claude Code sessions — surveys transcripts in ~/.claude/projects and reports what actually shipped.
+description: Use when Les asks what he was up to yesterday, wants a standup report, or needs to reconstruct recent work from his agent sessions — surveys transcripts in ~/.claude/projects, ~/.codex/sessions, and ~/.local/share/opencode and reports what actually shipped.
 ---
 
 # Standup Digest
 
 ## Overview
 
-Surveys Claude Code session transcripts and produces a short standup report: three or
+Surveys Claude Code, Codex, and OpenCode session transcripts and produces a short standup report: three or
 four bullets to read aloud, backed by a fuller digest to drill into when someone asks a
 follow-up.
 
