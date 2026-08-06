@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Survey Claude Code transcripts and emit a structured standup digest.
+"""Survey Claude Code, Codex, and OpenCode transcripts and emit a structured standup digest.
 
 Standard library only. Shells out to `git` and `gh`, imports neither.
 """
@@ -1035,7 +1035,7 @@ def build_digest(roots: list[Path], window: Window, verifier) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Emit a structured digest of recent Claude Code sessions."
+        description="Emit a structured digest of recent Claude Code, Codex, and OpenCode sessions."
     )
     parser.add_argument("--date", help="a single calendar day, YYYY-MM-DD")
     parser.add_argument("--since", help="window start, YYYY-MM-DD")
