@@ -25,8 +25,16 @@ Defaults to the previous workday through today, so a Monday run sweeps Friday th
 Sunday. Add `--date YYYY-MM-DD` for one specific day, or `--since`/`--until` for a range.
 Add `--no-verify` when offline.
 
-The script writes JSON to stdout. Read it and compose from it; do not re-read the raw
-transcripts yourself.
+The script writes JSON to stdout. Because this JSON can be extremely large (often over 2MB) and exceed context limits, you should NOT read the raw JSON output directly.
+
+Instead, pipe the output to a temporary file, then use the provided summarizer script to condense it before reading:
+
+```bash
+python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/standup_digest.py > /tmp/standup_digest.json
+python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/llm_summary.py /tmp/standup_digest.json
+```
+
+Read the output of `llm_summary.py` and compose from it; do not re-read the raw transcripts yourself.
 
 ## The digest contract
 
