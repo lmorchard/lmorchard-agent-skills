@@ -9,10 +9,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sqlite3
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 MONDAY = 0
@@ -93,12 +94,11 @@ def is_session_transcript(path: Path) -> bool:
     return False
 
 
-
 def normalize_codex_record(parsed: dict) -> dict:
     if "type" in parsed and "payload" in parsed:
         timestamp = parsed.get("timestamp")
         payload = parsed.get("payload", {})
-        
+
         if parsed["type"] == "session_meta":
             return {
                 "type": "ai-title",
@@ -106,9 +106,9 @@ def normalize_codex_record(parsed: dict) -> dict:
                 "cwd": payload.get("cwd"),
                 "gitBranch": payload.get("git", {}).get("branch"),
                 "timestamp": timestamp,
-                "isSidechain": False
+                "isSidechain": False,
             }
-            
+
         if parsed["type"] == "response_item":
             role = payload.get("role")
             if role in ("user", "assistant"):
@@ -116,14 +116,15 @@ def normalize_codex_record(parsed: dict) -> dict:
                 for c in payload.get("content", []):
                     if c.get("type") == "input_text" or c.get("type") == "output_text":
                         text_content.append({"type": "text", "text": c.get("text", "")})
-                
+
                 return {
                     "type": role,
                     "timestamp": timestamp,
                     "isSidechain": False,
-                    "message": {"content": text_content}
+                    "message": {"content": text_content},
                 }
     return parsed
+
 
 def read_transcript(path: Path) -> Transcript:
     """Parse a JSONL transcript, tolerating partial trailing writes."""
@@ -175,95 +176,115 @@ def touches_window(records: list[dict], window: Window) -> bool:
     return any(_in_window(rec, window) for rec in records)
 
 
-
-import sqlite3
-import json
-from datetime import datetime, timezone
-
 def discover_opencode_transcripts(window: Window) -> list[Transcript]:
     db_path = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
     if not db_path.exists():
         return []
-        
+
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
     except Exception:
         return []
-        
+
     # We filter by time_created. OpenCode uses ms timestamps.
     start_ms = int(window.since.timestamp() * 1000)
     end_ms = int(window.until.timestamp() * 1000)
-    
-    # We fetch all sessions that touch the window. 
+
+    # We fetch all sessions that touch the window.
     # Let's just fetch all sessions updated in the window.
     query = "SELECT * FROM session WHERE time_updated >= ? AND time_created < ?"
     sessions = conn.execute(query, (start_ms, end_ms)).fetchall()
-    
+
     transcripts = []
     for ses in sessions:
-        project = conn.execute("SELECT worktree FROM project WHERE id = ?", (ses['project_id'],)).fetchone()
-        cwd = project['worktree'] if project else ""
-        
-        messages = conn.execute("SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created", (ses['id'],)).fetchall()
-        
+        project = conn.execute(
+            "SELECT worktree FROM project WHERE id = ?", (ses["project_id"],)
+        ).fetchone()
+        cwd = project["worktree"] if project else ""
+
+        messages = conn.execute(
+            "SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created",
+            (ses["id"],),
+        ).fetchall()
+
         records = []
-        
+
         # Meta record for session info
-        records.append({
-            "type": "ai-title",
-            "sessionId": ses['id'],
-            "cwd": cwd,
-            "aiTitle": ses['title'] or ses['slug'],
-            "timestamp": datetime.fromtimestamp(ses['time_created'] / 1000.0, tz=timezone.utc).isoformat(),
-            "isSidechain": False
-        })
-        
+        records.append(
+            {
+                "type": "ai-title",
+                "sessionId": ses["id"],
+                "cwd": cwd,
+                "aiTitle": ses["title"] or ses["slug"],
+                "timestamp": datetime.fromtimestamp(
+                    ses["time_created"] / 1000.0, tz=timezone.utc
+                ).isoformat(),
+                "isSidechain": False,
+            }
+        )
+
         for msg in messages:
-            mdata = json.loads(msg['data'])
-            role = mdata.get('role')
-            if role not in ('user', 'assistant'):
+            mdata = json.loads(msg["data"])
+            role = mdata.get("role")
+            if role not in ("user", "assistant"):
                 continue
-                
-            parts = conn.execute("SELECT data FROM part WHERE message_id = ? ORDER BY time_created", (msg['id'],)).fetchall()
-            
+
+            parts = conn.execute(
+                "SELECT data FROM part WHERE message_id = ? ORDER BY time_created",
+                (msg["id"],),
+            ).fetchall()
+
             content_blocks = []
             for part in parts:
-                pdata = json.loads(part['data'])
-                if pdata.get('type') == 'text' and pdata.get('text'):
-                    content_blocks.append({"type": "text", "text": pdata.get('text')})
-                elif pdata.get('type') == 'tool-call':
+                pdata = json.loads(part["data"])
+                if pdata.get("type") == "text" and pdata.get("text"):
+                    content_blocks.append({"type": "text", "text": pdata.get("text")})
+                elif pdata.get("type") == "tool-call":
                     # To allow _bash_commands to harvest dirs
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "name": "Bash" if pdata.get('name') == 'default_api:bash' else pdata.get('name'),
-                        "input": pdata.get('input', {})
-                    })
-                    
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "name": "Bash"
+                            if pdata.get("name") == "default_api:bash"
+                            else pdata.get("name"),
+                            "input": pdata.get("input", {}),
+                        }
+                    )
+
             if content_blocks:
-                created_ms = mdata.get('time', {}).get('created', ses['time_created'])
-                records.append({
-                    "type": role,
-                    "timestamp": datetime.fromtimestamp(created_ms / 1000.0, tz=timezone.utc).isoformat(),
-                    "isSidechain": False,
-                    "message": {"content": content_blocks}
-                })
-                
+                created_ms = mdata.get("time", {}).get("created", ses["time_created"])
+                records.append(
+                    {
+                        "type": role,
+                        "timestamp": datetime.fromtimestamp(
+                            created_ms / 1000.0, tz=timezone.utc
+                        ).isoformat(),
+                        "isSidechain": False,
+                        "message": {"content": content_blocks},
+                    }
+                )
+
         if records:
             # We use a fake path so the rest of the script can handle it.
             # project_label uses path.parent.name, so we make it look like ~/.claude/projects/ProjectName/SessionId.jsonl
             proj_name = Path(cwd).name if cwd else "OpenCode"
-            fake_path = Path.home() / ".claude" / "projects" / proj_name / f"{ses['id']}.jsonl"
+            fake_path = (
+                Path.home() / ".claude" / "projects" / proj_name / f"{ses['id']}.jsonl"
+            )
             transcripts.append(Transcript(path=fake_path, records=records, malformed=0))
-            
+
     return transcripts
+
 
 def discover_transcripts(roots: list[Path]) -> list[Path]:
     """Every top-level session transcript under ~/.claude/projects and ~/.codex/sessions."""
     paths = []
     for root in roots:
         paths.extend(root.glob("*/*.jsonl"))
-        paths.extend(root.glob("*/*/*/*.jsonl")) # Codex structure: sessions/YYYY/MM/DD/
+        paths.extend(
+            root.glob("*/*/*/*.jsonl")
+        )  # Codex structure: sessions/YYYY/MM/DD/
     return sorted(p for p in paths if is_session_transcript(p))
 
 
@@ -945,9 +966,9 @@ def build_digest(roots: list[Path], window: Window, verifier) -> dict:
         except OSError as err:
             warnings.append(f"unreadable transcript {path}: {err}")
             continue
-            
+
     transcripts.extend(discover_opencode_transcripts(window))
-    
+
     for transcript in transcripts:
         malformed += transcript.malformed
         if not touches_window(transcript.records, window):
@@ -1054,7 +1075,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     verifier = NullVerifier() if args.no_verify else GhVerifier()
-    
+
     if args.root:
         roots = [Path(args.root)]
     else:
