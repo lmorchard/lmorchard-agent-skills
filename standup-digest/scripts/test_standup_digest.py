@@ -200,14 +200,15 @@ def test_discover_transcripts_filters_by_depth_and_uuid(tmp_path):
     (tmp_path / "project3" / "subagents").mkdir(parents=True, exist_ok=True)
     (tmp_path / "project3" / "subagents" / f"{valid_uuid}.jsonl").touch()
 
-    # Two levels deep (not one): should be excluded by glob
-    (tmp_path / "deep" / "nested" / "more").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "deep" / "nested" / "more" / f"{valid_uuid}.jsonl").touch()
+    # Codex layout, sessions/YYYY/MM/DD/<uuid>.jsonl: should be found
+    (tmp_path / "2026" / "07" / "28").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "2026" / "07" / "28" / f"{valid_uuid}.jsonl").touch()
 
-    found = sd.discover_transcripts(tmp_path)
-    assert len(found) == 1
-    assert found[0].name == f"{valid_uuid}.jsonl"
-    assert found[0].parent.name == "project1"
+    found = sd.discover_transcripts([tmp_path])
+    assert found == [
+        tmp_path / "2026" / "07" / "28" / f"{valid_uuid}.jsonl",
+        tmp_path / "project1" / f"{valid_uuid}.jsonl",
+    ]
 
 
 def test_strip_wrappers_removes_system_noise():
@@ -857,7 +858,7 @@ def test_commits_dedupes_git_log_by_resolved_repo_root(tmp_path, monkeypatch):
 
 def test_build_digest_over_fixtures_no_verify():
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
+    digest = sd.build_digest([FIXTURES.parent], window, sd.NullVerifier())
 
     assert digest["schema_version"] == sd.SCHEMA_VERSION
     assert digest["window"]["rule"] == "explicit"
@@ -876,7 +877,7 @@ def test_build_digest_applies_verification_to_refs(monkeypatch):
     }
     monkeypatch.setattr(sd, "_run", lambda cmd, timeout=20: json.dumps(payload))
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    digest = sd.build_digest(FIXTURES.parent, window, sd.GhVerifier())
+    digest = sd.build_digest([FIXTURES.parent], window, sd.GhVerifier())
 
     refs = [r for s in digest["sessions"] for r in s["refs"]]
     assert refs, "fixture should yield at least one ref"
@@ -965,7 +966,7 @@ def test_digest_matches_documented_schema(monkeypatch):
 
     monkeypatch.setattr(sd, "_run", fake_run)
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    digest = sd.build_digest(FIXTURES.parent, window, sd.GhVerifier())
+    digest = sd.build_digest([FIXTURES.parent], window, sd.GhVerifier())
 
     assert set(digest.keys()) == DIGEST_TOP_LEVEL_KEYS
 
@@ -988,7 +989,7 @@ def test_digest_matches_documented_schema(monkeypatch):
 
 def test_empty_window_yields_valid_digest():
     window = sd.resolve_window(local(2026, 7, 29), date="1999-01-01")
-    digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
+    digest = sd.build_digest([FIXTURES.parent], window, sd.NullVerifier())
     assert digest["sessions"] == []
     assert digest["stats"]["sessions"] == 0
 
@@ -1036,7 +1037,7 @@ def test_no_verify_never_touches_subprocess(monkeypatch):
 
     monkeypatch.setattr(sd, "_run", boom)
     window = sd.resolve_window(local(2026, 7, 29), date="2026-07-28")
-    digest = sd.build_digest(FIXTURES.parent, window, sd.NullVerifier())
+    digest = sd.build_digest([FIXTURES.parent], window, sd.NullVerifier())
     assert digest["schema_version"] == sd.SCHEMA_VERSION
 
 
@@ -1350,7 +1351,7 @@ def test_build_digest_counts_harvested_remoteless_commit(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sd, "_run", fake_run)
     window = sd.resolve_window(local(2026, 7, 30), date="2026-07-29")
-    digest = sd.build_digest(root, window, sd.GhVerifier())
+    digest = sd.build_digest([root], window, sd.GhVerifier())
 
     hits = [c for c in digest["commits"] if c["sha"] == "abc1234"]
     assert len(hits) == 1
