@@ -5,15 +5,37 @@ RUFF := uvx ruff@0.16.1
 SKILLS_DIR := $(HOME)/.claude/skills
 SKILLS := $(patsubst %/SKILL.md,%,$(wildcard */SKILL.md))
 
+STYLES_DIR := $(HOME)/.claude/output-styles
+STYLES := $(notdir $(wildcard output-styles/*.md))
+
+# One list covering both link kinds, so link/unlink/links each keep a single
+# copy of the safety logic. Each entry is <kind>:<name>. Skill names are
+# directories, style names are .md files; neither contains a colon or a space.
+LINKS := $(foreach s,$(SKILLS),skill:$(s)) $(foreach f,$(STYLES),style:$(f))
+
+# Expands one $$pair entry into $$name, $$dest, $$src, and the nouns used in
+# messages. Defined once here rather than repeated in all three recipes.
+#
+# The \# is required: an unescaped # opens a comment in a variable assignment,
+# which silently truncates the value mid-expansion.
+resolve = kind="$${pair%%:*}"; name="$${pair\#*:}"; \
+	  if [ "$$kind" = skill ]; then \
+	    dest="$(SKILLS_DIR)/$$name"; src="$(CURDIR)/$$name"; \
+	    noun="directory"; real="REAL DIRECTORY"; \
+	  else \
+	    dest="$(STYLES_DIR)/$$name"; src="$(CURDIR)/output-styles/$$name"; \
+	    noun="file"; real="REAL FILE"; \
+	  fi
+
 help:
 	@echo "test     - run the standup-digest test suite"
 	@echo "standup  - print yesterday's digest JSON"
 	@echo "lint     - ruff check + format check, no writes"
 	@echo "format   - apply safe lint fixes, then reformat"
 	@echo "check    - lint + test, the full gate"
-	@echo "link     - symlink this repo's skills into ~/.claude/skills"
-	@echo "unlink   - remove this repo's symlinks from ~/.claude/skills"
-	@echo "links    - show the current link state of each skill"
+	@echo "link     - symlink this repo's skills and output styles into ~/.claude"
+	@echo "unlink   - remove this repo's symlinks from ~/.claude"
+	@echo "links    - show the current link state of each skill and style"
 
 test:
 	uv run --with pytest pytest standup-digest/scripts laurels/scripts someday-triage/scripts -q
@@ -37,52 +59,57 @@ format:
 
 check: lint test
 
-# These skills are developed in place and symlinked into ~/.claude/skills rather
-# than consumed as a plugin. A plugin install snapshots the repo at a commit, so
-# edits here wouldn't take effect until committed and the plugin updated —
-# useless while actively working on a skill. Symlinks are live.
+# These skills and output styles are developed in place and symlinked into
+# ~/.claude rather than consumed as a plugin. A plugin install snapshots the
+# repo at a commit, so edits here wouldn't take effect until committed and the
+# plugin updated - useless while actively working on one. Symlinks are live.
 #
-# `link` refuses to replace a real directory: that would mean deleting a skill
-# that came from somewhere else, which is not this target's call to make.
+# Skills land in ~/.claude/skills, output styles in ~/.claude/output-styles.
+# Both are load paths Claude Code scans at startup.
+#
+# `link` refuses to replace a real directory or file: that would mean deleting
+# something that came from somewhere else, which is not this target's call.
 #
 # It first prunes links that point into this repo at a path that no longer
 # exists. Renaming a skill orphans its old link, and `unlink` can't help because
-# the old name is gone from SKILLS by then.
+# the old name is gone from LINKS by then.
 link:
-	@mkdir -p "$(SKILLS_DIR)"
-	@for dest in "$(SKILLS_DIR)"/*; do \
-	  [ -L "$$dest" ] || continue; \
-	  target="`readlink "$$dest"`"; \
-	  case "$$target" in "$(CURDIR)/"*) ;; *) continue ;; esac; \
-	  [ -e "$$target" ] || { rm "$$dest" && echo "  prune `basename "$$dest"` (was -> $$target)"; }; \
+	@mkdir -p "$(SKILLS_DIR)" "$(STYLES_DIR)"
+	@for d in "$(SKILLS_DIR)" "$(STYLES_DIR)"; do \
+	  for dest in "$$d"/*; do \
+	    [ -L "$$dest" ] || continue; \
+	    target="`readlink "$$dest"`"; \
+	    case "$$target" in "$(CURDIR)/"*) ;; *) continue ;; esac; \
+	    [ -e "$$target" ] || { rm "$$dest" && echo "  prune `basename "$$dest"` (was -> $$target)"; }; \
+	  done; \
 	done
-	@for s in $(SKILLS); do \
-	  dest="$(SKILLS_DIR)/$$s"; \
+	@for pair in $(LINKS); do \
+	  $(resolve); \
 	  if [ -e "$$dest" ] && [ ! -L "$$dest" ]; then \
-	    echo "  skip  $$s (real directory at $$dest - remove it first)"; \
-	  elif [ -L "$$dest" ] && [ "`readlink "$$dest"`" = "$(CURDIR)/$$s" ]; then \
-	    echo "  ok    $$s to $$dest"; \
+	    echo "  skip  $$name (real $$noun at $$dest - remove it first)"; \
+	  elif [ -L "$$dest" ] && [ "`readlink "$$dest"`" = "$$src" ]; then \
+	    echo "  ok    $$name to $$dest"; \
 	  else \
-	    ln -sfn "$(CURDIR)/$$s" "$$dest" && echo "  link  $$s to $$dest"; \
+	    ln -sfn "$$src" "$$dest" && echo "  link  $$name to $$dest"; \
 	  fi; \
 	done
 
-# Only removes links that point back at this repo, so a same-named skill from
-# another source is left alone.
+# Only removes links that point back at this repo, so a same-named skill or
+# style from another source is left alone.
 unlink:
-	@for s in $(SKILLS); do \
-	  dest="$(SKILLS_DIR)/$$s"; \
-	  if [ -L "$$dest" ] && [ "`readlink "$$dest"`" = "$(CURDIR)/$$s" ]; then \
-	    rm "$$dest" && echo "  unlink  $$s"; \
+	@for pair in $(LINKS); do \
+	  $(resolve); \
+	  if [ -L "$$dest" ] && [ "`readlink "$$dest"`" = "$$src" ]; then \
+	    rm "$$dest" && echo "  unlink  $$name"; \
 	  fi; \
 	done
 
 links:
-	@for s in $(SKILLS); do \
-	  dest="$(SKILLS_DIR)/$$s"; \
-	  if [ ! -e "$$dest" ] && [ ! -L "$$dest" ]; then printf '  %-26s missing\n' "$$s"; \
-	  elif [ ! -L "$$dest" ]; then printf '  %-26s REAL DIRECTORY\n' "$$s"; \
-	  elif [ "`readlink "$$dest"`" = "$(CURDIR)/$$s" ]; then printf '  %-26s linked\n' "$$s"; \
-	  else printf '  %-26s links elsewhere -> %s\n' "$$s" "`readlink "$$dest"`"; \
+	@for pair in $(LINKS); do \
+	  $(resolve); \
+	  if [ ! -e "$$dest" ] && [ ! -L "$$dest" ]; then printf '  %-26s missing\n' "$$name"; \
+	  elif [ ! -L "$$dest" ]; then printf '  %-26s %s\n' "$$name" "$$real"; \
+	  elif [ "`readlink "$$dest"`" = "$$src" ]; then printf '  %-26s linked\n' "$$name"; \
+	  else printf '  %-26s links elsewhere -> %s\n' "$$name" "`readlink "$$dest"`"; \
 	  fi; \
 	done

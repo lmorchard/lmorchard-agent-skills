@@ -38,6 +38,48 @@ User: Draft weeknotes for this week             # Uses last 7 days
 User: Create weeknotes from November 4-10      # Specific date range
 ```
 
+## Output Styles
+
+Output styles change how Claude talks to you. Claude Code appends them to the
+system prompt, so they apply to every response in a session.
+
+### eli5
+
+Small words, short sentences, and only what is necessary — written for the end
+of a long day. Caps decisions at two options with a recommendation. Keeps paths
+and commands exact.
+
+### simple-english
+
+The rules of [ASD-STE100 Simplified Technical
+English](https://asd-ste100.org/) applied to conversation: short sentences,
+active voice, simple tenses, one word one meaning, and conditions before
+commands. Adapted from the separate `simple-english` skill (not part of this
+repo), which handles full document rewrites; this style only governs the voice
+of replies.
+
+Both styles set `keep-coding-instructions: true`, so Claude's built-in software
+engineering behavior stays intact.
+
+### Selecting a style
+
+Run `/config` and choose **Output style**, or set the field directly in a
+settings file:
+
+```json
+{ "outputStyle": "Simple English" }
+```
+
+The value is the `name` from the file's frontmatter, not the file name. A style
+change takes effect on `/clear` or in the next session, because Claude Code
+reads the system prompt once at session start.
+
+> **Note:** the standalone `/output-style` command was deprecated in Claude
+> Code v2.1.73 and removed in v2.1.91. Use `/config` instead.
+
+Output styles apply to the main conversation only. Subagents run their own
+system prompt and ignore them.
+
 ## Installation
 
 ### For Claude Code
@@ -117,6 +159,26 @@ Linting is [ruff](https://docs.astral.sh/ruff/), pulled in on demand via
 `.ruff.toml`; it covers Python scripts only, deliberately excluding Markdown so
 that documentation snippets and archived dev-session notes aren't reformatted.
 
+### Local Install
+
+Skills and output styles are developed in place and symlinked into `~/.claude`:
+
+```bash
+make link      # symlink skills and output styles into ~/.claude
+make links     # show the current link state of each one
+make unlink    # remove this repo's symlinks
+```
+
+`make link` sends each skill directory to `~/.claude/skills/` and each
+`output-styles/*.md` file to `~/.claude/output-styles/`. Both are load paths
+Claude Code scans at startup. The target refuses to replace a real directory or
+file, removes only links that point back at this repo, and prunes links
+orphaned by a rename.
+
+A plugin install snapshots the repo at a commit, so edits here would not take
+effect until committed and the plugin updated. Symlinks are live, which is why
+local development uses them.
+
 ### Adding a New Skill
 
 1. Create a new directory for your skill:
@@ -147,7 +209,36 @@ that documentation snippets and archived dev-session notes aren't reformatted.
    }
    ```
 
-4. Test locally by symlinking or copying to `~/.claude/skills/`
+4. Run `make link` to symlink it into `~/.claude/skills/`. The target
+   discovers skills from `*/SKILL.md`, so there is no list to edit.
+
+### Adding an Output Style
+
+1. Create a Markdown file in `output-styles/`:
+   ```
+   output-styles/my-style.md
+   ```
+
+2. Add frontmatter and instructions:
+   ```markdown
+   ---
+   name: My Style
+   description: Shown in the /config picker
+   keep-coding-instructions: true
+   ---
+
+   Your instructions here.
+   ```
+
+   Set `keep-coding-instructions: true` to keep Claude's software engineering
+   behavior. Leave it out when the style is not for coding work.
+
+3. Run `make link`. The target discovers styles from `output-styles/*.md`, so
+   there is no list to edit. `.claude-plugin/marketplace.json` needs no entry
+   either: Claude Code loads a plugin's output styles from its `output-styles/`
+   directory automatically.
+
+4. Select it with `/config`, then `/clear` for it to take effect.
 
 ### Skill Structure
 
