@@ -136,9 +136,8 @@ sitting there waiting to be swept.
    - **Dead on the merits?** → propose `archive` with reason `closed`. Pruning on arrival is the
      point: dead ideas should never join the list.
    - **Otherwise** → `place` into a bucket and cluster, `retitle` if the wording is vague, and
-     `annotate` with one concrete first step.
-7. Research an item only when the answer would change its disposition. Every factual note you
-   write must end in `(verified YYYY-MM-DD)`.
+     `annotate` with one concrete first step. If the first step involves a product, part, or external resource, do the quick research to ground it in reality.
+7. Research an item when the answer would change its disposition **or to flesh out its concrete first step**. Every factual note you write must end in `(verified YYYY-MM-DD)`. **Always include markdown links for any outside sites, tools, or products you cite.**
 8. Emit the plan → `apply --dry-run` → show Les the reconciliation line → get yes/no on any
    retirements and merges that need it (see step 2 for the ones that don't) → `apply`. Report one
    line per item.
@@ -198,6 +197,7 @@ its absence cost something in the 2026-08-04 manual pass:
   tell which is which."
 - "Verify last-commit and last-release dates. Do not infer liveness from impressions — check."
 - "Distinguish what you **tested live** from what you only **read in docs**. Label each."
+- "Always include markdown links (`[text](url)`) to any external sites, products, or documentation you cite so I don't have to google for it later."
 
 Target decision-changing questions: is it maintained? superseded? purchasable and in stock?
 already solved elsewhere? is the obvious approach a trap?
