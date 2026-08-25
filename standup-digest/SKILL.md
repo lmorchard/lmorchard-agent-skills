@@ -18,27 +18,20 @@ merged — and does not touch Calendar or Tasks.
 ## Run the extractor
 
 ```bash
-python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/standup_digest.py
+python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/standup_digest.py --format llm
 ```
 
 Defaults to the previous workday through today, so a Monday run sweeps Friday through
 Sunday. Add `--date YYYY-MM-DD` for one specific day, or `--since`/`--until` for a range.
 Add `--no-verify` when offline.
 
-The script writes JSON to stdout. Because this JSON can be extremely large (often over 2MB) and exceed context limits, you should NOT read the raw JSON output directly.
+The script defaults to writing JSON to stdout. Because this JSON can be extremely large (often over 2MB) and exceed context limits, you **must use `--format llm`** to output a condensed summary instead.
 
-Instead, pipe the output to a temporary file, then use the provided summarizer script to condense it before reading:
-
-```bash
-python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/standup_digest.py > /tmp/standup_digest.json
-python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/llm_summary.py /tmp/standup_digest.json
-```
-
-Read the output of `llm_summary.py` and compose from it; do not re-read the raw transcripts yourself.
+Read the output of the script with `--format llm` and compose from it; do not re-read the raw transcripts yourself.
 
 ## The digest contract
 
-The JSON (`schema_version` 3) has: `schema_version`, `generated_at`, `window`
+The digest output (originally derived from JSON with `schema_version` 3) presents: `schema_version`, `generated_at`, `window`
 (`since`/`until`/`rule`),
 `stats` (`sessions`/`projects`/`malformed_lines`/`prompt_chars_dropped`/`gh_calls`),
 `warnings`, `notes`, `sessions[]`, `commits[]`, and `working_state[]`.

@@ -210,6 +210,20 @@ def test_discover_transcripts_filters_by_depth_and_uuid(tmp_path):
         tmp_path / "project1" / f"{valid_uuid}.jsonl",
     ]
 
+    # Deeper than the Codex date layout: should be excluded by glob
+    (tmp_path / "deep" / "nested" / "way" / "too" / "more").mkdir(
+        parents=True, exist_ok=True
+    )
+    (
+        tmp_path / "deep" / "nested" / "way" / "too" / "more" / f"{valid_uuid}.jsonl"
+    ).touch()
+
+    found = sd.discover_transcripts([tmp_path])
+    assert found == [
+        tmp_path / "2026" / "07" / "28" / f"{valid_uuid}.jsonl",
+        tmp_path / "project1" / f"{valid_uuid}.jsonl",
+    ]
+
 
 def test_strip_wrappers_removes_system_noise():
     text = (

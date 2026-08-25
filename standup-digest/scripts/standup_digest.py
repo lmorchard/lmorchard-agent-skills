@@ -1054,7 +1054,92 @@ def build_digest(roots: list[Path], window: Window, verifier) -> dict:
     }
 
 
+def format_llm(data: dict) -> str:
+    from collections import defaultdict
+
+    lines = []
+
+    def normalize_name(name):
+        if not name or name == "unknown":
+            return "unknown"
+        return name.split("/")[-1]
+
+    window = data.get("window", {})
+    start_date = window.get("since", "unknown")[:10]
+
+    lines.append(f"DATE: {start_date}")
+    lines.append(f"WARNINGS: {data.get('warnings', [])}")
+    lines.append(f"STATS: {data.get('stats', {})}")
+    lines.append("")
+
+    commits_by_repo = defaultdict(list)
+    for c in data.get("commits", []):
+        repo = c.get("repo")
+        if not repo:
+            repo = c.get("path", "unknown").split("/")[-1] + " (local, no remote)"
+        else:
+            repo = normalize_name(repo)
+        commits_by_repo[repo].append(c)
+
+    ws_map = {}
+    for ws in data.get("working_state", []):
+        ws_map[ws.get("path")] = ws
+
+    projects = defaultdict(list)
+    for s in data.get("sessions", []):
+        proj = normalize_name(s.get("project", "unknown"))
+        projects[proj].append(s)
+
+    for proj, sessions in projects.items():
+        lines.append(f"### PROJECT: {proj}")
+
+        if proj in commits_by_repo:
+            lines.append("  COMMITS:")
+            for c in commits_by_repo[proj]:
+                lines.append(f"    - {c.get('sha')[:7]} {c.get('subject')}")
+
+        for s in sessions:
+            title = s.get("title")
+            if not title:
+                prompts = s.get("prompts", [])
+                title = (
+                    (prompts[0][:60] + "...")
+                    if prompts
+                    else "session with no recorded prompts"
+                )
+
+            lines.append(f"  * SESSION: {title}")
+            lines.append(f"    - Launch: {s.get('launch')}")
+            lines.append(f"    - Branches: {s.get('branches')}")
+
+            refs = s.get("refs", [])
+            if refs:
+                lines.append("    - Refs:")
+                for r in refs:
+                    lines.append(
+                        f"      - {r.get('kind')} #{r.get('number')} ({r.get('state')}) [verified: {r.get('verification')}]"
+                    )
+
+            cwds = s.get("cwds", [])
+            for cwd in cwds:
+                if cwd in ws_map:
+                    ws = ws_map[cwd]
+                    lines.append(
+                        f"    - Working state: path={ws.get('path')}, dirty={ws.get('dirty_files')}, branch={ws.get('branch')}, last_commit={ws.get('last_commit', {}).get('sha') if ws.get('last_commit') else 'null'}"
+                    )
+
+            prompts = s.get("prompts", [])
+            notes = s.get("assistant_notes", [])
+            p_text = prompts[0][:150].replace("\n", " ") if prompts else ""
+            n_text = notes[0][:150].replace("\n", " ") if notes else ""
+            if p_text or n_text:
+                lines.append(f"    - Context: {p_text} | {n_text}")
+
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
+
     parser = argparse.ArgumentParser(
         description="Emit a structured digest of recent Claude Code, Codex, and OpenCode sessions."
     )
@@ -1063,7 +1148,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--until", help="window end (exclusive), YYYY-MM-DD")
     parser.add_argument("--no-verify", action="store_true", help="skip git and gh")
     parser.add_argument("--root", default=None, help="projects directory")
-    parser.add_argument("--out", help="write JSON here instead of stdout")
+    parser.add_argument("--out", help="write output here instead of stdout")
+    parser.add_argument(
+        "--format",
+        choices=["json", "llm"],
+        default="json",
+        help="output format (json or condensed llm summary)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -1084,7 +1175,10 @@ def main(argv: list[str] | None = None) -> int:
             Path.home() / ".codex" / "sessions",
         ]
     digest = build_digest(roots, window, verifier)
-    payload = json.dumps(digest, indent=2, ensure_ascii=False)
+    if args.format == "llm":
+        payload = format_llm(digest)
+    else:
+        payload = json.dumps(digest, indent=2, ensure_ascii=False)
 
     if args.out:
         try:
