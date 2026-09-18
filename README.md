@@ -23,14 +23,14 @@ Build production-ready Go command-line tools following established patterns with
 
 [View detailed documentation →](./go-cli-builder/SKILL.md)
 
-### weeknotes-blog-post-composer
+### weeknotes-composer
 
 Composes conversational weeknotes blog posts from multiple data sources (Mastodon and Linkding).
 
 - **Description**: Automatically fetches content and composes readable, Jekyll-style blog posts with proper voice and narrative structure
 - **Data Sources**: Mastodon posts, Linkding bookmarks
 - **Output**: Jekyll Markdown with YAML frontmatter
-- **Documentation**: [weeknotes-blog-post-composer/README.md](weeknotes-blog-post-composer/README.md)
+- **Documentation**: [weeknotes-composer/README.md](weeknotes-composer/README.md)
 
 **Quick usage:**
 ```
@@ -259,7 +259,7 @@ See [Anthropic's skill documentation](https://github.com/anthropics/skills) for 
 
 ## Security & Privacy
 
-Skills that require API credentials (like weeknotes-blog-post-composer) store them in gitignored config files. All credentials and personal data remain local on your machine. No telemetry or data sharing.
+Skills that require API credentials (like weeknotes-composer) store them in gitignored config files. All credentials and personal data remain local on your machine. No telemetry or data sharing.
 
 ## Contributing
 
