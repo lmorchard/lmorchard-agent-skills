@@ -40,7 +40,7 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
 
 6. **Push the branch** to remote.
 
-7. **Open the PR** using `references/pr-body-template.md` for the body structure. Title under 70 chars; details in the body. Include `Closes #N` references and pointers to `spec.md` and `plan.md`.
+7. **Open the PR** using `references/pr-body-template.md` for the body structure. Every human check in `plan.md` that is still unconfirmed goes into the Test Plan as an unticked item, and its box in `plan.md` gets the "moved to the PR test plan (#N)" note (see `execute`). Title under 70 chars; details in the body. Include `Closes #N` references and pointers to `spec.md` and `plan.md`.
 
 8. **Project board hook.** If a GitHub Project is configured (see `references/github-projects.md`), move each issue referenced via `Closes #N` to the configured `in_review` column. Skip silently if not configured.
 
