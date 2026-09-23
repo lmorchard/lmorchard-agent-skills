@@ -10,7 +10,7 @@ Write an implementation plan from the spec.
 
 ## Outputs
 
-- `plan.md` — vertical-slice phases with mandatory automated and manual verification checkboxes
+- `plan.md` — vertical-slice phases with mandatory automated, agent-run and human verification checkboxes
 
 ## Process
 
@@ -28,7 +28,8 @@ Write an implementation plan from the spec.
    - **Files** — paths and what changes in each
    - **Key changes** — type signatures, new functions, or non-trivial code snippets
    - **Verification — automated** — `- [ ]` checkboxes for `make lint` / `make test` / `make check` / phase-specific commands (see `references/makefile-conventions.md`)
-   - **Verification — manual** — `- [ ]` checkboxes for what the human should eyeball
+   - **Verification — agent-run** — `- [ ]` checkboxes for behavioural checks that sit outside the test suite but can be scripted (run the binary, check an exit code, inspect a file). `execute` runs these itself and ticks them with evidence.
+   - **Verification — human** — `- [ ]` checkboxes for what only a person can judge: eyes on a real terminal or UI, feel, anything the agent can't observe. Before filing a check here, ask whether it could be agent-run instead.
 
    Checkboxes are mandatory. `execute` ticks them off as it progresses, and they are the resume mechanism if context resets mid-session.
 

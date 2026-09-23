@@ -39,7 +39,9 @@ If `superpowers:subagent-driven-development` is available, invoke it. It dispatc
      ```
    - **Pre-commit `git status` check.** Before committing, run `git status` and confirm: every file the phase intended to edit is staged; nothing unexpected is included. Catches the "subagent did `git mv` then edited but forgot `git add`" failure mode where a commit lands a renamed-but-stale file and tests still pass in the working tree.
    - Commit the phase as one commit with a descriptive message (`Phase N: <name>`). One commit per phase keeps phases independently revertable.
-   - Present manual verification items to the user. In interactive mode, wait for confirmation before ticking manual checkboxes and proceeding to the next phase. In `express` mode, skip manual pauses (they happen at the branch self-review instead).
+   - Run the phase's **agent-run** checks yourself and tick them with evidence, like automated ones.
+   - Present the **human** checks to the user. In interactive mode, wait for confirmation before ticking them and proceeding to the next phase. In `express` mode, skip these pauses (they happen at the branch self-review instead).
+   - **A human check that won't be confirmed during the session is annotated, not left bare.** If the user chooses to move on without confirming (e.g. "keep going"), or `express` defers it, leave the box unticked and append a plain-language note saying where it went: `- [ ] Two terminals… — moved to the PR test plan (#107)`. Then copy it into the PR's Test Plan in `pr`. Without the note, a merged plan can't distinguish "the user confirmed this", "nobody checked this" and "this was handed to review".
 
 3. **Scope discipline.** Only make changes described in the plan. Do not refactor or clean up adjacent code, even if it's obviously messy. If you spot something worth fixing, note it for the user after the phase is done — don't fix it now.
 
