@@ -27,6 +27,7 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
    - **Test gaps:** new behavior without tests, changed behavior that existing tests don't cover
    - **Convention violations:** bare error strings, imports inside functions, undeclared attributes
    - **Doc gaps:** new config options not documented, CLAUDE.md key files list stale
+   - **Premise corrections:** if self-review, or later a review comment, overturns a premise from `spec.md` or `research.md`, grep all the session docs (`spec.md`, `research.md`, `plan.md`, `notes.md`) for every restatement of it. Correct each one and mark it as revised. Fixing only the spec leaves stale copies for reviewers to find.
 
    Fix anything found before proceeding. This catches issues Copilot often misses (and vice versa).
 
@@ -63,7 +64,7 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
 
 12. **Fix worthwhile comments.** Lint, test, commit.
 
-13. **Squash again and force-push** with `--force-with-lease` (refuses if remote has commits you haven't fetched, preventing silent overwrites of work pushed from another machine). Before squashing, re-run step 4's origin/main check — main may have advanced during the Copilot poll-and-fix cycle too.
+13. **Squash again and force-push** with `--force-with-lease` (refuses if remote has commits you haven't fetched, preventing silent overwrites of work pushed from another machine). Before squashing, re-run step 4's origin/main check — main may have advanced during the Copilot poll-and-fix cycle too. Record the current squash commit's SHA *before* `git reset --soft origin/main`, then reuse its message with `git commit -C <sha>`. A reflog shorthand like `ORIG_HEAD@{0}` can fail after the reset and leave you on `origin/main` with everything staged.
 
 14. **Report** the PR URL, what was fixed, and what was skipped (with brief reasoning).
 
