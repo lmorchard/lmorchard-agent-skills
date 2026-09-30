@@ -1,4 +1,6 @@
-.PHONY: help test standup lint format check link unlink links
+.PHONY: help test standup lint format check link unlink links setup
+
+setup: link ## Symlink skills and output styles into ~/.claude
 
 RUFF := uvx ruff@0.16.1
 
