@@ -46,7 +46,8 @@ Start or resume a dev session.
 
 8. **Project board hook.** If working from an issue URL and a GitHub Project is configured (see `references/github-projects.md`), move the issue to the configured `in_progress` column. Skip silently if no issue URL or no project configured.
 
-9. **Report** the session directory path and worktree path. This is the active dev session until another is started or this one is finished.
+9. **Report** the session directory and worktree as **absolute paths, on their own lines**, e.g. `Session dir: /abs/.../docs/dev-sessions/2026-10-01-1534-slug`. This is the active dev session until another is started or this one is finished.
+   - **That printed path is the session directory from here on.** Every later phase reuses it verbatim. Never re-derive it from `date` or retype the timestamp from memory: a session that crosses a minute boundary yields a second, silently created directory, because writing a file creates any missing parents. If context resets, recover the path with `ls -d {base}/*-{slug}` and pick the one holding `spec.md`, never a fresh timestamp.
 
 ## After
 
