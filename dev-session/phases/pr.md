@@ -29,6 +29,11 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
    - **Doc gaps:** new config options not documented, CLAUDE.md key files list stale
    - **Premise corrections:** if self-review, or later a review comment, overturns a premise from `spec.md` or `research.md`, grep all the session docs (`spec.md`, `research.md`, `plan.md`, `notes.md`) for every restatement of it. Correct each one and mark it as revised. Fixing only the spec leaves stale copies for reviewers to find.
 
+   Then an **adversarial pass**, because a correctness read misses what an outside reviewer finds:
+   - **Break each spec invariant.** For every "only", "never", bound, or permission rule in `spec.md`, try to violate it in the diff. Look for preexisting state, unnormalised input, unbounded rate, a near-miss mapping ("clicked" taken as any mouse event), and an item already in flight when a setting flips.
+   - **Negative tests prove their trigger ran.** A "does not happen" test needs evidence the triggering action ran: a sentinel, a counter, a positive control. Waiting for quiet is not evidence. If there's no such evidence, break the guard and confirm the test fails.
+   - **Every new test can fail.** Name the broken implementation it catches. Watch for test doubles friendlier than the real thing, like an in-process channel that drops where a socket would block.
+
    Fix anything found before proceeding. This catches issues Copilot often misses (and vice versa).
 
 3. **Verification before completion:** before opening the PR, run `make lint`, `make test`, and `make check` and confirm green (see SKILL.md "Verification before completion" and "Makefile-first"). Do not open a PR with red checks.
