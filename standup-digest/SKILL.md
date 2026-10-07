@@ -18,7 +18,7 @@ merged — and does not touch Calendar or Tasks.
 ## Run the extractor
 
 ```bash
-python3 ~/devel/lmorchard-agent-skills/standup-digest/scripts/standup_digest.py --format llm
+python3 ~/.claude/skills/standup-digest/scripts/standup_digest.py --format llm
 ```
 
 Defaults to the previous workday through today, so a Monday run sweeps Friday through
