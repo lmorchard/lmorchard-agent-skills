@@ -49,7 +49,7 @@ Print a brief status line at each transition. Run each phase file in sequence, w
 | 3a. Plan | `phases/plan.md` | — |
 | 3b. Plan self-review | self-review checklist from `phases/plan.md` step 8 | Replaces the human plan review — fix and continue |
 | 3c. Execute | `phases/execute.md` | Skip per-phase manual pauses — they happen at 3d |
-| 3d. Branch self-review | self-review checklist from `phases/pr.md` step 1 | Catches issues Copilot misses (and vice versa) |
+| 3d. Branch self-review | `phases/pr.md` step 2, including its fresh-subagent adversarial pass | Catches issues Copilot misses (and vice versa) |
 | 3e. Squash and PR | `phases/pr.md` steps 3–6 | Use `references/pr-body-template.md` for the body; project-board hook runs here if configured |
 | 3f. Copilot review cycle | `phases/pr.md` steps 7–12 | Always run — do not wait for user confirmation |
 

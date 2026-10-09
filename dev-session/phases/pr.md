@@ -29,12 +29,19 @@ Self-review, squash, push, open a PR, and run the Copilot review cycle.
    - **Doc gaps:** new config options not documented, CLAUDE.md key files list stale
    - **Premise corrections:** if self-review, or later a review comment, overturns a premise from `spec.md` or `research.md`, grep all the session docs (`spec.md`, `research.md`, `plan.md`, `notes.md`) for every restatement of it. Correct each one and mark it as revised. Fixing only the spec leaves stale copies for reviewers to find.
 
-   Then an **adversarial pass**, because a correctness read misses what an outside reviewer finds:
-   - **Break each spec invariant.** For every "only", "never", bound, or permission rule in `spec.md`, try to violate it in the diff. Look for preexisting state, unnormalised input, unbounded rate, a near-miss mapping ("clicked" taken as any mouse event), and an item already in flight when a setting flips.
-   - **Negative tests prove their trigger ran.** A "does not happen" test needs evidence the triggering action ran: a sentinel, a counter, a positive control. Waiting for quiet is not evidence. If there's no such evidence, break the guard and confirm the test fails.
-   - **Every new test can fail.** Name the broken implementation it catches. Watch for test doubles friendlier than the real thing, like an in-process channel that drops where a socket would block.
+   Then an **adversarial pass, by a fresh subagent, by default.** A correctness read by the author misses what an outside reviewer finds. The author wrote the tests around their own assumptions, so their pass inherits the same blind spots. Dispatch a `general-purpose` subagent that has none of the session's context:
+   - **Isolate it.** Tell it to `cd` to the worktree as its literal first action and to confirm with `git rev-parse --show-toplevel`. It must be read-only: no edits, commits, pushes, or anything that reaches a network, cloud or cluster. Running local unit tests is fine.
+   - **Point it at the source of truth:** `spec.md` first, then `git diff origin/main..HEAD`. Name the components and the flow in a paragraph so it doesn't have to rediscover the architecture.
+   - **Ask for real defects only**, each with `file:line`, a concrete failure scenario, severity and confidence. Tell it to say plainly if it finds nothing serious. Have it hunt for:
+     - **Breaks of each spec invariant.** For every "only", "never", bound, or permission rule in `spec.md`, try to violate it in the diff. Look for preexisting state, unnormalised input, unbounded rate, a near-miss mapping ("clicked" taken as any mouse event), and an item already in flight when a setting flips.
+     - **Negative tests that don't prove their trigger ran.** A "does not happen" test needs evidence the triggering action ran: a sentinel, a counter, a positive control. Waiting for quiet is not evidence.
+     - **Tests that can't fail.** For each new test, name the broken implementation it would miss. Watch for test doubles friendlier than the real thing: an in-process channel that drops where a socket would block, or an injected object where production *aliases* a shared one, such as `env` being `process.env`.
+     - **Widened failure windows.** A new remote step inserted between existing ones changes what each later failure leaves behind.
+   - **Run it in the background** while you do step 3's verification, and don't duplicate its files.
 
-   Fix anything found before proceeding. This catches issues Copilot often misses (and vice versa).
+   **Verify every finding first-hand before acting on it.** Read the code it cites. Reviewer output is usually right, which is exactly why a wrong claim slips through. Fix the real ones test-first (the test must fail before the fix). Mark wrong claims as such with the evidence. Record each finding and its outcome (fixed, tested, documented limitation, or not a defect) in `notes.md`. A finding you choose not to fix also goes in the PR body's known limitations.
+
+   Skip the subagent only for docs-only or trivially mechanical diffs, and say so. Then do the same three checks inline yourself. This catches issues Copilot often misses (and vice versa).
 
 3. **Verification before completion:** before opening the PR, run `make lint`, `make test`, and `make check` and confirm green (see SKILL.md "Verification before completion" and "Makefile-first"). Do not open a PR with red checks.
 
