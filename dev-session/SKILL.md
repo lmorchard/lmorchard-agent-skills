@@ -45,6 +45,8 @@ This separates "thinking" (you, focused) from "doing" (agent, autonomous).
 - **Fallback:** see the inline procedure in `phases/start.md`.
 - Fall back to in-place branch switching only if the project can't support a worktree (uncommitted changes that must stay visible, tooling that requires a fixed path) or the user asks for it.
 
+**Session directory is printed once, then reused.** `start` prints the session directory as an absolute path; every later phase writes to exactly that path. Don't recompute `{timestamp}` after `start` — see `phases/start.md` step 9.
+
 **Worktree gotcha.** Untracked files in the main checkout are NOT visible from worktrees. Always create the session directory inside the active worktree, not in the main checkout, and verify it's there before writing artifacts. Always fetch and rebase from origin/main before creating the branch the worktree will track.
 
 **Documentarian agent dispatch.** When dispatching a subagent (`Explore` or `general-purpose`) for codebase research, use the negation rules in `references/documentarian-prompt.md`. This keeps research factual and prevents the agent from rationalizing toward a chosen solution.
