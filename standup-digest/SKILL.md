@@ -142,7 +142,7 @@ alone, e.g. "pilo (feat/retry-backoff): session with no recorded prompts".
 ## Output
 
 Two artifacts: the terminal bullets (the tl;dr), and the full detail file — which now
-*opens* with those same bullets.
+*opens* with those same bullets. Then link the detail file from today's journal.
 
 ### Terminal — the tl;dr
 
@@ -197,6 +197,22 @@ the `path`'s directory basename, e.g. `zoo-service (local, no remote)`.
 
 Note once in the file that prompts/notes are truncated when `prompt_chars_dropped` is
 nonzero (for a session or in `stats`) — the detail file is not a verbatim transcript.
+
+### Journal link — `~/Documents/Obsidian/main/journals/YYYY/YYYY-MM-DD.md`
+
+So the detail file isn't orphaned, link it from the daily journal for the day the
+digest was **run** (today), not the window's start date. Insert one bullet directly
+under the `# notes` heading, after any existing top-level bullets but before the first
+`##` subsection (so it doesn't land inside someone's meeting notes):
+
+```
+- standup digest: [[standup-digests/2026-07-28|Tue Jul 28]]
+```
+
+The link target is the detail file's vault path without `.md`; the alias is the
+window's start date. Add only that line — never rewrite the rest of the page. If a link to
+the same digest is already there (a re-run), leave it alone. If today's journal
+doesn't exist yet, don't create it; say so in the terminal output instead.
 
 ## When the day was quiet
 
