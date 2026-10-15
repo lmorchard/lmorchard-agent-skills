@@ -1,0 +1,27 @@
+{
+  "levels": {
+    "current": "L4",
+    "target": "L5"
+  },
+  "clg_path": "pages/reviews/career-levels.md",
+  "prior_review_path": "pages/reviews/2026-H1 self-review.md",
+  "work_orgs": [
+    "example-employer",
+    "example-employer-labs"
+  ],
+  "tooling_repos": [
+    "your-user/agent-tooling"
+  ],
+  "linear_teams": [],
+  "heading_denylist": [
+    "^therapy$",
+    "medical",
+    "^mom call$"
+  ],
+  "overrides": {
+    "j:2026-08-14#side-project-notes": "personal"
+  },
+  "secret_patterns": [
+    "myco_[A-Za-z0-9]{24,}"
+  ]
+}
