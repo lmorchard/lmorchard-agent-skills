@@ -40,7 +40,7 @@ help:
 	@echo "links    - show the current link state of each skill and style"
 
 test:
-	uv run --with pytest pytest standup-digest/scripts laurels/scripts someday-triage/scripts -q
+	uv run --with pytest pytest standup-digest/scripts laurels/scripts someday-triage/scripts review-digest/scripts -q
 
 standup:
 	python3 standup-digest/scripts/standup_digest.py
