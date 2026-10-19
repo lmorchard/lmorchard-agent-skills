@@ -25,7 +25,13 @@
         "./standup-digest",
         "./session-wrapup",
         "./laurels",
-        "./someday-triage"
+        "./someday-triage",
+        "./how",
+        "./correct",
+        "./why",
+        "./blast-radius",
+        "./create-verification-skill",
+        "./benchmark-checklist"
       ]
     }
   ]

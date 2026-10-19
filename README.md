@@ -4,6 +4,53 @@ A collection of skills for Claude Code and Claude.ai that extend Claude's capabi
 
 ## Available Skills
 
+### how
+
+Explain a codebase or subsystem with source-backed execution flow, data ownership,
+boundaries, and gotchas. Works independently of an issue or delivery workflow.
+
+[Skill instructions](how/SKILL.md)
+
+### correct
+
+Prevent recurring agent mistakes with structural constraints, types, checks, or
+behavioral tests. Investigate the named pattern and prove the correction within
+the requested scope.
+
+[Skill instructions](correct/SKILL.md)
+
+### why
+
+Investigate the historical reasons behind code and design decisions. Separate
+recorded rationale from supported inference and unresolved questions.
+
+[Skill instructions](why/SKILL.md)
+
+### blast-radius
+
+Assess indirect effects of a proposed change and verify its decisive safety
+assumptions. Return concrete risks, cleared concerns, and coverage limits.
+
+[Skill instructions](blast-radius/SKILL.md)
+
+### create-verification-skill
+
+Build a project-local recipe for launching, driving, observing, and cleaning up a
+real application. Execute a representative journey before calling it verified.
+
+[Skill instructions](create-verification-skill/SKILL.md)
+
+### benchmark-checklist
+
+Check that a performance comparison measures correct, completed work under
+comparable conditions. Report repeatability, practical impact, and evidence limits.
+
+[Skill instructions](benchmark-checklist/SKILL.md)
+
+These six skills adapt Lauren Tan's pstack. Each skill records its upstream source,
+revision, and MIT license. They are standalone capabilities and do not start
+`dev-session` or ghflow delivery.
+
 ### go-cli-builder
 
 Build production-ready Go command-line tools following established patterns with Cobra CLI framework, Viper configuration, SQLite database, and automated GitHub Actions workflows.
